@@ -3,20 +3,19 @@
 #-------------------------------------------------
 
 QT       += core gui widgets network quick qml 
-#QT       += core gui widgets network quick qml webkit webkitwidgets
-#QT       += core gui widgets network
 
-#CONFIG += debug
-#CONFIG += release
-#CONFIG += console
-#CONFIG -= app_bundle
+#CONFIG += console  # Win: uncomment to have console window open up for debugging
+#CONFIG -= app_bundle # Mac: uncommment to not build a .app bundle
+CONFIG += qtquickcompiler
 
 TARGET = Blink1Control
 TEMPLATE = app
-VERSION = v1.83
+VERSION = 1.84
+BLINK1CONTROL_VERSION = v1.84
 #VERSION = $$system(git describe)  # should return tag like "v1.8"
 # but git isn't in PATH in Windows, so can't do it.
 
+# DEPLOYMENT FOLDERS is used by qtquick2applicationviewer.pri, not qmake
 qmlfolder.source = qml/qml
 qmlfolder.target = qml
 helpfolder.source = help
@@ -26,21 +25,16 @@ DEPLOYMENTFOLDERS = qmlfolder helpfolder
 # Additional import path used to resolve QML modules in Creator's code model
 QML_IMPORT_PATH =
 
-# If your application uses the Qt Mobility libraries, uncomment the following
-# lines and add the respective components to the MOBILITY variable.
-# CONFIG += mobility
-# MOBILITY +=
-
 # Installation path
 # target.path =
 
 # Please do not modify the following two lines. Required for deployment.
 include(qtquick2applicationviewer/qtquick2applicationviewer.pri)
-qtcAddDeployment()
+qtcAddDeployment()  # defined by qtquickapplicationviewer
 
 
 SOURCES += main.cpp\
-        mainwindow.cpp \
+    mainwindow.cpp \
     blink1pattern.cpp \
     blink1input.cpp \
     datainput.cpp \
@@ -49,7 +43,8 @@ SOURCES += main.cpp\
     simplecrypt.cpp \
     hardwaremonitor.cpp \
     Cursorshapearea.cpp \
-    httpserver.cpp
+    httpserver.cpp \
+    mainapp.cpp
 
 HEADERS  += mainwindow.h \
     blink1pattern.h \
@@ -61,7 +56,8 @@ HEADERS  += mainwindow.h \
     hardwaremonitor.h \
     Cursorshapearea.h \
     patternsReadOnly.h \
-    httpserver.h
+    httpserver.h \
+    mainapp.h
 
 #FORMS    += mainwindow.ui
 
@@ -70,51 +66,43 @@ RESOURCES += \
 
 
 # for blink1-lib
-# note: need to "cd blink1/commandline && make lib" beforehand
+# note: be sure to compile blink1-lib beforhard with:
+# cd blink1/commandline && make lib"
+# for Windows, that will build both MinGW & MSVC compatible libs
 BLINK1_LIB_DIR=$$PWD/../../commandline
 #message("BLINK1_LIB_DIR=$$BLINK1_LIB_DIR")
 
 macx:  LIBS += -L$$BLINK1_LIB_DIR -lBlink1
-win32: LIBS += $$BLINK1_LIB_DIR/blink1-lib.dll
+#win32: LIBS += $$BLINK1_LIB_DIR/blink1-lib.dll
+win32-g++: LIBS += $$BLINK1_LIB_DIR/blink1-lib.dll
+win32-msvc*: LIBS += $$BLINK1_LIB_DIR/blink1-lib.lib
 
-DEFINES += BLINK1CONTROL_VERSION=\\\"$$VERSION\\\"
+DEFINES += BLINK1CONTROL_VERSION=\\\"$$BLINK1CONTROL_VERSION\\\"
 #message("DEFINES = $$DEFINES")
 
-QMAKE_CXXFLAGS += -DUSE_HIDAPI 
-#QMAKE_CFLAGS += -DUSE_HIDAPI
+QMAKE_CXXFLAGS += -DUSE_HIDAPI # not QMAKE_CFLAGS += -DUSE_HIDAPI
 INCLUDEPATH += $$BLINK1_LIB_DIR
 DEPENDPATH  += $$BLINK1_LIB_DIR
 
-
 macx {
     MYAPPDIR=$$OUT_PWD/$${TARGET}.app/Contents/MacOS
-    #message( "MYAPPDIR = $$MYAPPDIR" )
     BLINK1LIBPATH = $$BLINK1_LIB_DIR/libBlink1.dylib
     QMAKE_POST_LINK += $(COPY) $$BLINK1LIBPATH $$MYAPPDIR
+    #message( "MYAPPDIR = $$MYAPPDIR" )
 }
 
 win32 {
     CONFIG(release, debug|release):  MYAPPDIR=$$OUT_PWD/release
     CONFIG(debug,   debug|release):  MYAPPDIR=$$OUT_PWD/debug
+    BLINK1LIBPATH = $$clean_path($$BLINK1_LIB_DIR/blink1-lib.dll)
+    QMAKE_PRE_LINK  += $(COPY) $$shell_path($$BLINK1LIBPATH) $$shell_path($$MYAPPDIR)
     #message( "MYAPPDIR = $$MYAPPDIR , DESTDIR = $(DESTDIR), helpfolder = $$helpfolder" )
-    BLINK1LIBPATH = $$BLINK1_LIB_DIR/blink1-lib.dll
-    BLINK1LIBPATH ~= s,/,\\,g   # Windows-ify the path
-    MYAPPDIR ~= s,/,\\,g   # Windows-ify the path
-    QMAKE_POST_LINK += $(COPY) $$BLINK1LIBPATH $$MYAPPDIR
-    # the below doesn't work
-    #QMAKE_POST_LINK += & $(MKDIR) help\help
-    #QMAKE_POST_LINK += & $(COPY_DIR) help\help $$MYAPPDIR
 }
 
 
 OTHER_FILES += \
-    qml/qml/main.qml \
-    MailPopup.qml \
-    HostIdPopup.qml \
-    ComboBox1.qml \
-    DropDownMenu.qml \
+    README.txt \
     MyInfo.plist \
-    MyGroupBox.qml \
     help/index.html
 
 win32{
@@ -122,31 +110,8 @@ win32{
 }
 #ICON = images/blink1-icon01.ico
 
-mac{
+macx{
     ICON = images/blink1-icon0.icns
     QMAKE_INFO_PLIST = MyInfo.plist
 }
 
-
-
-# win32:
-# minimum DLLs appear to be: (in "release" kit)
-# Qt5Core.dll Qt5Gui.dll Qt5Widgets.dll
-# icudt49.dll icuin49.dll icuuc49.dll
-# D3DCompiler_43.dll libGLESv2.dll libEGL.dll
-# libgcc_s_sjlj-1.dll libstdc++-6.dll  libwinpthread-1.dll
-# blink1-lib.dll
-
-
-# for tasteful-server
-##INCLUDEPATH += ../third-party/tasteful-server/include
-##macx: LIBS += -L../third-party/tasteful-server -lTastefulServer
-
-# Fervor autoupdater
-#!include("../third-party/fervor/Fervor.pri") {
-#    error("Unable to include Fervor autoupdater.")
-#}
-
-#!include(../third-party/tasteful-server/tasteful-server.pri) {
-#    error("Unable to include tasteful-server.")
-#}

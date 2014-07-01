@@ -38,6 +38,7 @@
 #include <QKeyEvent>
 #include <QEvent>
 #include <QAction>
+#include <QShortcut>
 
 #include <QMenu>
 #include <QUrlQuery>
@@ -46,6 +47,8 @@
 #include <QFont>
 #include <QFontMetrics>
 
+// maximum number events in the Recent Events list
+#define RECENT_EVENTS_MAX 200
 
 class HttpServer;
 
@@ -100,7 +103,8 @@ public slots:
         return bi1->date()>bi2->date();
     }
     static bool compareInputsFunction(Blink1Input *bi1,Blink1Input *bi2){
-        return bi1->date()<bi2->date();
+        return bi1->name()<bi2->name();
+        //return bi1->date()<bi2->date();
     }
 
     QList<QObject*> getPatternsList();
@@ -111,6 +115,8 @@ public slots:
     QVariantList getRecentEvents();
     QVariantList getPatternsNames();
     QList<QObject*> getBigButtons();
+
+    void refreshBlink1State();
 
     void setColorToBlinkAndChangeActivePatternName(QColor,QString,int f=100);
     void setColorToBlink(QColor,int f);
@@ -266,6 +272,7 @@ private:
 
     QSystemTrayIcon *trayIcon;
     QMenu *trayIconMenu;
+    //QShortcut* resetAlertsShortcut;
 
     QTimer* blink1timer;
     blink1_device* blink1dev;
@@ -288,7 +295,7 @@ private:
     QString activePatternName;
 
     QString blinkStatus;
-    QString blinkKey;
+    QString blink1Id;
     QString iftttKey;
     int rgbCycle;
     int rgbCounter;
@@ -303,6 +310,8 @@ private:
     bool dockIcon;
     bool startmin;
     bool enableServer;
+    bool enableGamma;
+    bool firstRun;
     int blink1Index;
     QString getTimeFromInt(int t);
     bool mk2;

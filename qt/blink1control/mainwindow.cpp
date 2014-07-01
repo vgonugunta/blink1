@@ -37,11 +37,13 @@ MainWindow::MainWindow(QWidget *parent) :
     mk2=false;
     blinkStatus="";
     iftttKey="";
-    blinkKey="none";
+    blink1Id="none";
     autorun=false;
     dockIcon=true;
     startmin=false;
     enableServer=false;
+    enableGamma=false;
+    firstRun=true;
     logging=false;
     srand(0);
     logFile=NULL;
@@ -53,6 +55,7 @@ MainWindow::MainWindow(QWidget *parent) :
     httpserver->setController(this);
 
     loadSettings();
+
     qDebug()<<"LOGGING: "<<logging;    
     if(logging){
         logFile=new QFile("log.txt");
@@ -66,6 +69,7 @@ MainWindow::MainWindow(QWidget *parent) :
         }
     }
     addToLog("LOGGING: "+QString::number(logging));
+
     if(bigButtons2.count()==0){
         bigButtons2.prepend(new BigButtons("Away",QColor("#FFFF00")));
         bigButtons2.prepend(new BigButtons("Busy",QColor("#FF0000")));
@@ -74,48 +78,34 @@ MainWindow::MainWindow(QWidget *parent) :
         emit bigButtonsUpdate();
     }
 
-    cc = QColor(100,100,100);
-
     QIcon ico = QIcon(":/images/blink1-icon0.png");
     setWindowIcon(ico);
-
-    blink1timer = new QTimer(this);
-    blink1timer->stop();  // errant timer causing extra updateBlink1() calls?
-    connect(blink1timer, SIGNAL(timeout()), this, SLOT(updateBlink1()));
-
-    blink1_disableDegamma();  // for mk2 only
-
-    //int n = blink1_enumerate();
-    //blink1dev =  blink1_open();
-    blink1_enumerate();
-    blink1dev = blink1_openById( blink1Index );
-
-    if( blink1dev ) {
-        char ser[10];
-        char iftttkey2[20];
-        sprintf(ser,"%s",blink1_getCachedSerial( blink1_getCacheIndexByDev(blink1dev)));
-        //sprintf(ser,"%s",blink1_getCachedSerial(0));
-        sprintf(iftttkey2, "%s",ser);
-        blinkStatus="blink(1) connected";
-        blinkKey=ser;
-        iftttKey=iftttKey.left(8)+iftttkey2;
-        mk2=blink1_isMk2(blink1dev);
-        emit deviceUpdate();
-    }
-    else {
-        blinkStatus="no blink(1) found";
-        iftttKey=iftttKey.left(8)+"00000000";
-        blinkKey="none";
-    }
 
     createActions();
     createTrayIcon();
     trayIcon->setIcon( ico);
     trayIcon->show();
-    trayIcon->showMessage("Blink1Control running", (mac() ? "Click menubar icon for settings & options" :
-                                             "Click tray icon for settings, right-click for options"));
 
-    activePatternName="";
+    activePatternName=""; 
+
+    cc = QColor(0,0,0);
+
+    if( firstRun ) { 
+        trayIcon->showMessage("Blink1Control running", 
+                              (mac() ? "Click menubar icon for settings & options" :
+                               "Click tray icon for settings, right-click for options") );
+        cc = QColor(100,100,100);  // initial color
+        firstRun = false;
+    }
+
+    blink1timer = new QTimer(this);
+    blink1timer->stop();  // errant timer causing extra updateBlink1() calls?
+    connect(blink1timer, SIGNAL(timeout()), this, SLOT(updateBlink1()));
+
+    blink1_enumerate();
+    blink1dev = blink1_open(); // do initial enumerate and open so refreshBlink1State works
+
+    refreshBlink1State();
     updateBlink1();
 
     // load help file index.html to text property of QML
@@ -134,6 +124,7 @@ MainWindow::MainWindow(QWidget *parent) :
     f.close();
     viewer.rootContext()->setContextProperty("helpTextString", helpTextStr);
 
+    // set up QML viewer
     qmlRegisterType<QsltCursorShapeArea>("CursorTools", 1, 0, "CursorShapeArea");
     viewer.rootContext()->setContextProperty("mw", this);
     viewer.setMainQmlFile(QStringLiteral("qml/qml/main.qml"));
@@ -168,85 +159,59 @@ MainWindow::MainWindow(QWidget *parent) :
 
     setColorToBlink(cc,400);  // give a default non-black color to let people know it works
 
-    //
-    // testing what visiblitity we have into window handling
-    //
-    //connect(&viewer,SIGNAL(closing(QQuickCloseEvent*)),this,SLOT(viewerClosingSlot(QQuickCloseEvent*)));
-    //if(mac()) connect(&viewer,SIGNAL(visibleChanged(bool)),this,SLOT(viewerVisibleChangedSlot(bool)));
-    // instead of above, just watch for when app is quitting, 
-    // and use static bool to make sure we don't quit twice
-    //connect( qApp, SIGNAL(aboutToQuit()), this, SLOT(quit()) );
-    
     connect( &viewer, SIGNAL(activeChanged()),this,SLOT(viewerActiveChanged()));
-    //connect( &viewer, SIGNAL(changeEvent(QEvent *)), this, SLOT(viewerChangeEvent(QEvent*)) );
-    //connect( &viewer, SIGNAL(statusChanged(QQuickView::Status)), this, SLOT(viewerStatusChanged(QQuickView::Status)) );
-    //connect( &viewer, SIGNAL(closing(QQuickCloseEvent*)),this,SLOT(viewerClosing(QQuickCloseEvent*)));
-    //connect( &viewer, SIGNAL(windowStateChanged(Qt::WindowState)),this,SLOT(viewerWindowStateChanged(Qt::WindowState)));
-    //connect( &viewer, SIGNAL(visibilityChanged(QWindow::Visibility)), this, SLOT(viewerVisibilityChanged(QWindow::Visibility)) );
     
     qApp->setQuitOnLastWindowClosed(false);  // this makes close button not quit qpp
-}
 
-// for testing the above connect()s
+}
 
 // called when window has focus
 void MainWindow::viewerActiveChanged() {
-    qDebug() << "viewerActiveChanged: " << viewer.isActive();
+    //qDebug() << "viewerActiveChanged: " << viewer.isActive();
     saveSettings();
 }
 
-/*
-void MainWindow::changeEvent(QEvent* e)
+
+void MainWindow::refreshBlink1State()
 {
-    qDebug() << "changeEvent " << e;
-    QMainWindow::changeEvent(e);
-}
-// called only on minimize?
-void MainWindow::viewerVisibilityChanged(QWindow::Visibility visibility) {
-    qDebug() << "viewerVisibilityChanged: " << visibility;
-    
-}
-// called when minimize is finished
-void MainWindow::viewerWindowStateChanged(Qt::WindowState state) {
-    qDebug() << "viewerWindowStateChanged: " << state;
-    if( state == Qt::WindowMinimized ) { 
-        qDebug() << "minimized!";
-        viewer.hide();
+    blink1_close(blink1dev);  // blink1_close checks for null
+    blink1dev=NULL;
+
+    if( !enableGamma ) { 
+        blink1_enableDegamma();  // FIXME: bad names for these funcs
+    } else { 
+        blink1_disableDegamma();
     }
-}
-void MainWindow::viewerStatusChanged(QQuickView::Status status) {
-    qDebug() << "viewerStatusChanged: " << status;
-}
-void MainWindow::viewerChangeEvent(QEvent* event) {
-    qDebug() << "viewerChangeEvent: " << event;
-}
-void MainWindow::viewerClosing(QQuickCloseEvent*event){
-    qDebug() << "viewerClosing: "<< event ;
+
+    //int n=blink1_enumerate();
+    //blink1dev =  blink1_open();
+    blink1_enumerate();
+    blink1dev = blink1_openById( blink1Index );
+    if( blink1dev ) {
+        QString serialstr = blink1_getCachedSerial( blink1_getCacheIndexByDev(blink1dev)); //blink1_getCachedSerial(0)); 
+        blinkStatus="blink(1) connected";
+        blink1Id = serialstr;
+        iftttKey = iftttKey.left(8) + serialstr; //iftttkey2;
+        mk2 = blink1_isMk2(blink1dev);
+        emit deviceUpdate();
+    } else {
+        blinkStatus = "no blink(1) found";
+        iftttKey = iftttKey.left(8) + "00000000";
+        blink1Id = "none";
+    }
+    blinkStatusAction->setText(blinkStatus);
+    blinkIdAction->setText("blink(1) id: " + blink1Id);
+    iftttKeyAction->setText("IFTTT Key: " + iftttKey);
+
+    emit iftttUpdate();
 }
 
-// these three not needed now we're just watching QApp::aboutToQuit() and using quit() for everything
-void MainWindow::viewerClosingSlot(QQuickCloseEvent* event){
-    qDebug() << "viewerClosingSlot: "<< event;
-}
-void MainWindow::viewerVisibleChangedSlot(bool v){
-    qDebug() << "viewerVisibleChangedSlot: "<< v;
-}
-void MainWindow::markViewerAsClosing(){
-    qDebug() << "markViewerAsClosing: ";
-}
-*/
 
+// FIXME: wth is this function for?
+// and why is it called periodically?
 void MainWindow::deleteDataInput(DataInput *dI)
 {
-    if(dI->responseTo){
-        QJsonObject ob;
-        ob.insert("input",dI->input->toJsonWithNameTypePNameArg1Arg2AndDate());
-        ob.insert("status",QString("input "+dI->input->type().toLower()));
-        QJsonDocument jd(ob);
-        QByteArray ba=jd.toJson();
-        dI->responseTo->write(ba);
-        dI->responseTo=NULL;
-    }
+    //qDebug()<<"deleteDataInput";
     dI->input->isChecking=false;
     if(dI->input->toDelete)
         delete dI->input;
@@ -265,43 +230,21 @@ void MainWindow::runPattern(QString name, bool fromQml)
 
 void MainWindow::setColorFromDataInput(QColor color)
 {
-    changeColorFromQml(color);
+    //qDebug() << "setColorFromDataInput";
+    cc = color;
+    fadeSpeed = 300;
+    changeColorOnVirtualBlink(cc, fadeSpeed);
+    mode=RGBSET;
+    updateBlink1();
+    //changeColorFromQml(color);  // what marcin originally had
 }
+
 
 void MainWindow::updateInputs()
 {
-    qDebug() << "updateInputs()";
-    //if(blink1dev!=NULL){
-    blink1_close(blink1dev);  // blink1_close checks for null
-    blink1dev=NULL;
-    //}
-    blink1_disableDegamma();  // FIXME: why is this being done here in updateInputs()?
-    // FIXME: the below is copy-n-pasted from what's in the constructor
-    //int n=blink1_enumerate();
-    //blink1dev =  blink1_open();
-    blink1_enumerate();
-    blink1dev =  blink1_openById( blink1Index );
-    if( blink1dev ) {
-        char ser[10];
-        char iftttkey2[20];
-        //sprintf(ser,"%s",blink1_getCachedSerial(0)); 
-        sprintf(ser,"%s",blink1_getCachedSerial( blink1_getCacheIndexByDev(blink1dev)));
-        sprintf(iftttkey2, "%s",ser);
-        blinkStatus="blink(1) connected";
-        blinkKey=ser;
-        iftttKey=iftttKey.left(8)+iftttkey2;
-        mk2=blink1_isMk2(blink1dev);
-        emit deviceUpdate();
-    }else {
-        blinkStatus="no blink(1) found";
-        iftttKey=iftttKey.left(8)+"00000000";
-        blinkKey="none";
-    }
-    blinkStatusAction->setText(blinkStatus);
-    blinkIdAction->setText("blink(1) id: "+blinkKey);
-    iftttKeyAction->setText("IFTTT Key: "+iftttKey);
+    //qDebug() << "updateInputs()";
+    refreshBlink1State(); // not sure why this is here, but whatever
 
-    emit iftttUpdate();
     QString type;
     QString key;
     delete inputsIterator;
@@ -313,10 +256,9 @@ void MainWindow::updateInputs()
         key = inputsIterator->key();
         type = inputs[key]->type();
         
-        if(type.toUpper() == "URL")
-        {
-            if(inputs[key]->freqCounter()==0)//inputTimerCounter == 0)
-            {
+        // FIXME: why are these objects created and deleted for each iteration?
+        if( type == "url" ) {
+            if(inputs[key]->freqCounter()==0) { //inputTimerCounter == 0)
                 qDebug() << "type: URL, freqcounter==0";
 
                 DataInput *dI = new DataInput(this);
@@ -324,57 +266,45 @@ void MainWindow::updateInputs()
                 connect(dI, SIGNAL(runPattern(QString, bool)), this, SLOT(runPattern(QString, bool)));
                 connect(dI, SIGNAL(setColor(QColor)), this, SLOT(setColorFromDataInput(QColor)));
                 connect(dI, SIGNAL(addReceiveEvent(int,QString,QString)), this, SLOT(addRecentEvent(int,QString,QString)));
-                dI->setType(type.toUpper());
+                dI->setType(type);
                 dI->setInput(inputs[key]);
-                dI->setPattern(patterns.value(key));
-                dI->setPatternList(patterns.keys());
                 dI->setIftttKey(iftttKey);
                 dI->start();
             }
             inputs[key]->changeFreqCounter();
         }
-        else
-        {
-                if(type.toUpper() == "IFTTT.COM")
-                {                    
-                    if(inputTimerCounter == 0){
-                        inputs[key]->updateTime();
-                        if(!isIftttChecked)
-                        {
-                            isIftttChecked = true;
-                            DataInput *dI = new DataInput(this);
-                            connect(dI, SIGNAL(toDelete(DataInput*)), this, SLOT(deleteDataInput(DataInput*)));
-                            connect(dI, SIGNAL(runPattern(QString, bool)), this, SLOT(runPattern(QString, bool)));
-                            connect(dI, SIGNAL(setColor(QColor)), this, SLOT(setColorFromDataInput(QColor)));
-                            connect(dI, SIGNAL(iftttToCheck(QString)), this, SLOT(checkIfttt(QString)));
-                            connect(dI, SIGNAL(addReceiveEvent(int,QString,QString)), this, SLOT(addRecentEvent(int,QString,QString)));
-                            dI->setType(type.toUpper());
-                            dI->setInput(inputs[key]);
-                            dI->setPattern(patterns.value(key));
-                            dI->setPatternList(patterns.keys());
-                            dI->setIftttKey(iftttKey);
-                            dI->start();
-                        }
-                    }
-                }
-                else
-                {
-                    if(inputs[key]->freqCounter()==0){
-                        DataInput *dI = new DataInput(this);
-                        connect(dI, SIGNAL(toDelete(DataInput*)), this, SLOT(deleteDataInput(DataInput*)));
-                        connect(dI, SIGNAL(runPattern(QString, bool)), this, SLOT(runPattern(QString, bool)));
-                        connect(dI, SIGNAL(setColor(QColor)), this, SLOT(setColorFromDataInput(QColor)));
-                        connect(dI, SIGNAL(addReceiveEvent(int,QString,QString)), this, SLOT(addRecentEvent(int,QString,QString)));
-                        dI->setType(type.toUpper());
-                        dI->setInput(inputs[key]);
-                        dI->setPattern(patterns.value(key));
-                        dI->setPatternList(patterns.keys());
-                        dI->setIftttKey(iftttKey);
-                        dI->start();
-                    }
-                    inputs[key]->changeFreqCounter();
+        else if( type == "ifttt" ) {                    
+            if(inputTimerCounter == 0){
+                inputs[key]->updateTime();
+                if(!isIftttChecked) {
+                    isIftttChecked = true;
+                    DataInput *dI = new DataInput(this);
+                    connect(dI, SIGNAL(toDelete(DataInput*)), this, SLOT(deleteDataInput(DataInput*)));
+                    connect(dI, SIGNAL(runPattern(QString, bool)), this, SLOT(runPattern(QString, bool)));
+                    connect(dI, SIGNAL(setColor(QColor)), this, SLOT(setColorFromDataInput(QColor)));
+                    connect(dI, SIGNAL(iftttToCheck(QString)), this, SLOT(checkIfttt(QString)));
+                    connect(dI, SIGNAL(addReceiveEvent(int,QString,QString)), this, SLOT(addRecentEvent(int,QString,QString)));
+                    dI->setType(type);
+                    dI->setInput(inputs[key]);
+                    dI->setIftttKey(iftttKey);
+                    dI->start();
                 }
             }
+        }
+        else {
+            if(inputs[key]->freqCounter()==0){
+                DataInput *dI = new DataInput(this);
+                connect(dI, SIGNAL(toDelete(DataInput*)), this, SLOT(deleteDataInput(DataInput*)));
+                connect(dI, SIGNAL(runPattern(QString, bool)), this, SLOT(runPattern(QString, bool)));
+                connect(dI, SIGNAL(setColor(QColor)), this, SLOT(setColorFromDataInput(QColor)));
+                connect(dI, SIGNAL(addReceiveEvent(int,QString,QString)), this, SLOT(addRecentEvent(int,QString,QString)));
+                dI->setType(type);
+                dI->setInput(inputs[key]);
+                dI->setIftttKey(iftttKey);
+                dI->start();
+            }
+            inputs[key]->changeFreqCounter();
+        }
     }
 
     delete emailsIterator;
@@ -384,7 +314,7 @@ void MainWindow::updateInputs()
     {
         emailsIterator->next();
         QString mailname=emailsIterator->key();
-        qDebug() << "updateInputs: "<< mailname;
+        //qDebug() << "updateInputs: "<< mailname;
         addToLog(mailname);
         if(emails.value(mailname)->getFreqCounter()==0){
             emails.value(mailname)->checkMail();
@@ -399,7 +329,7 @@ void MainWindow::updateInputs()
     {
         hardwaresIterator->next();
         QString name=hardwaresIterator->key();
-        qDebug() << "updateInputs: " << name;
+        //qDebug() << "updateInputs: " << name;
         addToLog(name);
         if(hardwareMonitors.value(name)->getFreqCounter()==0){
             hardwareMonitors.value(name)->checkMonitor();
@@ -413,11 +343,16 @@ void MainWindow::updateInputs()
 
 }
 
-// checkIFttt() parses the /eventsall JSON response from api.thingm.com
-// param txt is full json response from ifttt api server
-// Scans through received IFTTT events, find matches to input's rule names.
-// On match and if date is newer than last saved date, 
-// execute the pattern bound to that rule and update event list
+/**
+ * Parses the /eventsall JSON response from api.thingm.com.
+ * Scans through received IFTTT events, find matches to input's rule names.
+ * On match and if date is newer than last saved date, 
+ * execute the pattern bound to that rule and update event list.
+ *
+ * @note FIXME: not sure why this isn't in DataInput or Blink1Input
+ *
+ * @param txt Full JSON response from ifttt api server
+ */
 void MainWindow::checkIfttt(QString txt)
 {
     //qDebug() << "todtest: checkIfttt(txt) " << txt;
@@ -447,7 +382,7 @@ void MainWindow::checkIfttt(QString txt)
             // is this an IFTTT input and does the event name match?
             // FIXME: type should be just "ifttt" or enum 
             // FIXME: name should be same as rule name (aka arg1)
-            if( input->type() == "IFTTT.COM" ) { 
+            if( input->type() == "ifttt" ) { 
                 // is the event newer than our last event, then trigger!
                 if( evdate > input->date() ) {
                     input->setDate(evdate); // save for next go around
@@ -467,7 +402,14 @@ void MainWindow::addRecentEvent(int date, QString name, QString from)
     addToLog(name+" "+from);
     QString text = getTimeFromInt(QDateTime::currentDateTime().toTime_t()/*date*/) + "-" + name + " via " + from;
     recentEvents.prepend(text);
+    if( recentEvents.count() > RECENT_EVENTS_MAX ) { 
+        recentEvents.removeLast();
+    }
     addToLog(QString::number(date));
+
+    // uncomment this to add message popups for alerts
+    //trayIcon->showMessage("Blink1Control",  text );
+
     emit recentEventsUpdate();
 }
 
@@ -545,7 +487,7 @@ void MainWindow::quit()
 
 void MainWindow::saveSettings()
 {
-    qDebug() << "saveSettings()";
+    //qDebug() << "saveSettings()";
     QSettings settings(QSettings::IniFormat, QSettings::UserScope, "ThingM", "Blink1Control");
 
     settings.setValue("iftttKey", iftttKey);//sText);
@@ -555,52 +497,58 @@ void MainWindow::saveSettings()
     settings.setValue("server",serverAction->isChecked());
     settings.setValue("logging",logging);
     settings.setValue("blink1Index", QString::number(blink1Index,16) );
+    settings.setValue("enableGamma", enableGamma);
+    settings.setValue("firstRun", firstRun);
 
     // save patterns
     QJsonArray qarrp;
-    foreach (QString nm, patterns.keys() ) {  // crashed here once?
-        if(!patterns.value(nm)) continue;
+    foreach (QString nm, patterns.keys() ) {  
+        if(!patterns.value(nm)) continue; // if no pattern by that name, skip (should never happen)
         Blink1Pattern* p = patterns.value(nm);
         if(p->isSystem()) continue;  // don't save system patterns
         if(p->getColors().count() == 0 ) continue; // disregard zero-length patterns
-        QJsonObject obj = patterns.value(nm)->toFullJsonReadyToSave();
+        QJsonObject obj = patterns.value(nm)->toJson(); 
         qarrp.append(obj);
     }
-    QString patternsstr = QJsonDocument(qarrp).toJson();
+    QString patternsstr = QJsonDocument(qarrp).toJson(QJsonDocument::Compact);
     settings.setValue("patterns", patternsstr);
+
     // save inputs
     QJsonArray qarri;
     foreach (QString nm, inputs.keys() ) {
-        QJsonObject obj = inputs.value(nm)->toFullJsonReadyToSave();
+        QJsonObject obj = inputs.value(nm)->toJson(); //FullJsonReadyToSave();
         qarri.append(obj);
     }
-    QString inputsstr = QJsonDocument(qarri).toJson();
+    QString inputsstr = QJsonDocument(qarri).toJson(QJsonDocument::Compact);
     settings.setValue("inputs", inputsstr);
 
+    // save buttons
     QJsonArray qbutt;
     for(int i=0;i<bigButtons2.count();i++){
         QJsonObject but=bigButtons2.at(i)->toJson();
         qbutt.append(but);
     }
-    QString buttsstr = QJsonDocument(qbutt).toJson();
+    QString buttsstr = QJsonDocument(qbutt).toJson(QJsonDocument::Compact);
     settings.setValue("bigbuttons2",buttsstr);
 
+    // save emails  (why aren't these inputs?)
     QJsonArray qarrpm;
     foreach (QString nm, emails.keys() ) {
         if(!emails.value(nm)) continue;
         QJsonObject obj = emails.value(nm)->toJson();
         qarrpm.append(obj);
     }
-    QString emsstr = QJsonDocument(qarrpm).toJson();
+    QString emsstr = QJsonDocument(qarrpm).toJson(QJsonDocument::Compact);
     settings.setValue("emails", emsstr);
 
+    // save hardware monitors (why aren't these inputs?)
     QJsonArray qarrpm2;
     foreach (QString nm, hardwareMonitors.keys() ) {
         if(!hardwareMonitors.value(nm)) continue;
         QJsonObject obj = hardwareMonitors.value(nm)->toJson();
         qarrpm2.append(obj);
     }
-    QString harstr = QJsonDocument(qarrpm2).toJson();
+    QString harstr = QJsonDocument(qarrpm2).toJson(QJsonDocument::Compact);
     settings.setValue("hardwareMonitors", harstr);
 }
 
@@ -629,6 +577,8 @@ void MainWindow::loadSettings()
     startmin     = settings.value("startmin","").toBool();
     enableServer = settings.value("server","").toBool();
     logging      = settings.value("logging","").toBool();
+    enableGamma  = settings.value("enableGamma","").toBool();
+    firstRun     = settings.value("firstRun",true).toBool();
 
     QString blink1IndexStr = settings.value("blink1Index","").toString();
     qDebug() << "blink1IndexStr: "<< blink1IndexStr;
@@ -773,7 +723,7 @@ void MainWindow::updateBlink1()
     }
 
     if( setBlink1 ) {
-        qDebug() << "todtest:         updateBlink1: fadeSpeed="<<fadeSpeed << ", "<< cc.name();
+        qDebug() << "         updateBlink1: fadeSpeed="<<fadeSpeed << ", "<< cc.name();
         if(blink1dev!=NULL) 
             blink1_fadeToRGBN( blink1dev, fadeSpeed , cc.red(), cc.green(), cc.blue(), led);
         if(!fromPattern)
@@ -810,7 +760,7 @@ void MainWindow::createActions()
     connect(aboutAction, SIGNAL(triggered()), this, SLOT(showAboutDialog()));
 
     blinkStatusAction=new QAction(blinkStatus,this);
-    blinkIdAction =new QAction("blink(1) id: "+blinkKey,this);
+    blinkIdAction =new QAction("blink(1) id: "+blink1Id,this);
     iftttKeyAction=new QAction("IFTTT key: "+iftttKey,this);
     #ifdef Q_OS_MAC
     blinkStatusAction->setDisabled(true);
@@ -843,6 +793,14 @@ void MainWindow::createActions()
     serverAction->setChecked(enableServer);
     connect(serverAction,SIGNAL(triggered()),this,SLOT(startStopServer()));
 
+    // shortcuts don't work apparently in traymenus
+    //alertsAction->setShortcut(Qt::Key_R | Qt::CTRL);
+    // this doesn't appear to work either
+    //resetAlertsShortcut = new QShortcut(QKeySequence(Qt::CTRL + Qt::Key_R), This, SLOT(resetAlertsOption()));
+    // neither does this work
+    //resetAlertsShortcut = new QShortcut( QKeySequence(Qt::CTRL+Qt::Key_R), QApplication::activeWindow());
+    //resetAlertsShortcut->setContext(Qt::ApplicationShortcut);
+    //connect( resetAlertsShortcut, SIGNAL(activated()), this, SLOT(resetAlertsOption()));
 }
 
 void MainWindow::createTrayIcon()
@@ -866,7 +824,9 @@ void MainWindow::createTrayIcon()
 
     trayIcon = new QSystemTrayIcon(this);
     trayIcon->setContextMenu(trayIconMenu);
+
     trayIcon->setToolTip("Blink1Control");
+
     connect( trayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)), 
              this, SLOT(trayIconActivated(QSystemTrayIcon::ActivationReason)) );
 }
@@ -953,7 +913,7 @@ void MainWindow::setColorToBlinkAndChangeActivePatternName(QColor c,QString s,in
         led=patterns.value(s)->getCurrentLed();
         emit ledsUpdate();
     }
-    qDebug()<<"todtest: setColorToBlink: fadespeed:"<<fadeSpeed << " color: " <<c.name() << " s: "<<s;
+    qDebug()<<"    setColorToBlink: fadespeed:"<<fadeSpeed << " color: " <<c.name() << " s: "<<s;
     updateBlink1();
     //if(s!="")// && !fromPattern)
         //QMetaObject::invokeMethod((QObject*)viewer.rootObject(),"changeColor2", Q_ARG(QVariant, cc));
@@ -1110,9 +1070,10 @@ QList<QObject*> MainWindow::getInputsList(){
 
     QList<Blink1Input*> in=inputs.values();
     qSort(in.begin(),in.end(),MainWindow::compareInputsFunction);
-    for(int i=0;i<in.count();i++)
-        if(in.at(i)->type()!="IFTTT.COM")
+    for(int i=0;i<in.count();i++) {
+        if(in.at(i)->type()!="ifttt") // FIXME: wat?
             inputsList.append(in.at(i));
+    }
     return inputsList;
 }
 
@@ -1122,7 +1083,7 @@ QList<QObject*> MainWindow::getIFTTTList(){
     QList<Blink1Input*> in=inputs.values();
     qSort(in.begin(),in.end(),MainWindow::compareInputsFunction);
     for(int i=0;i<in.count();i++)
-        if(in.at(i)->type()=="IFTTT.COM")
+        if(in.at(i)->type()=="ifttt")
             inputsList.append(in.at(i));
     return inputsList;
 }
@@ -1239,8 +1200,8 @@ QString MainWindow::getBlinkStatus(){
 QString MainWindow::getIftttKey(){
     return iftttKey;
 }
-QString MainWindow::getBlinkKey(){
-    return blinkKey;
+QString MainWindow::getBlinkKey(){  // FIXME: rename this
+    return blink1Id;
 }
 void MainWindow::playOrStopPattern(QString name){
     if(!patterns.contains(name)) return;
@@ -1294,7 +1255,7 @@ void MainWindow::updateInputsArg1(QString name, QString arg1){
     checkInput(name);
 }
 void MainWindow::updateInputsType(QString name, QString type){
-    inputs.value(name)->setType(type);
+    inputs.value(name)->setType(type.toLower());
     emit inputsUpdate();
     checkInput(name);
 }
@@ -1307,7 +1268,7 @@ void MainWindow::createNewIFTTTInput(){
     while(inputs.contains("Name"+QString::number(duplicateCounter)))
         duplicateCounter++;
     bp->setName("Name"+QString::number(duplicateCounter));
-    bp->setType("IFTTT.COM");
+    bp->setType("ifttt");
     bp->setArg1("My Rule Name");
     bp->setArg2("no value");
     bp->setPatternName("");
@@ -1320,7 +1281,7 @@ void MainWindow::createNewInput(){
     while(inputs.contains("Name"+QString::number(duplicateCounter)))
         duplicateCounter++;
     bp->setName("Name"+QString::number(duplicateCounter));
-    bp->setType("FILE");
+    bp->setType("file");
     bp->setArg1("Double click to change path");
     bp->setArg2("no value");
     bp->setFreqCounter(1);
@@ -1377,9 +1338,8 @@ void MainWindow::checkInput(QString key){
     connect(dI, SIGNAL(runPattern(QString, bool)), this, SLOT(runPattern(QString, bool)));
     connect(dI, SIGNAL(setColor(QColor)), this, SLOT(setColorFromDataInput(QColor)));
     connect(dI, SIGNAL(addReceiveEvent(int,QString,QString)), this, SLOT(addRecentEvent(int,QString,QString)));
-    dI->setType(inputs[key]->type().toUpper());
+    dI->setType(inputs[key]->type());
     dI->setInput(inputs[key]);
-    dI->setPatternList(patterns.keys());
     dI->setIftttKey(iftttKey);
     dI->start();
     inputs[key]->isChecking=true;
@@ -1393,13 +1353,14 @@ bool MainWindow::isMk2(){
 }
 QString MainWindow::selectFile(QString name){
     if(inputs.contains(name)){
-        if(inputs.value(name)->type()=="FILE"){
+        if(inputs.value(name)->type()=="file"){
             QString tmp=QFileDialog::getOpenFileName(this,tr("Select File"),"", tr(""));
             return tmp;
         }else{
             QString tmp=QFileDialog::getOpenFileName(this,tr("Select Script"),QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation), tr(""));
-            QFileInfo fi(tmp);
-            return fi.fileName();
+            //QFileInfo fi(tmp);
+            //return fi.fileName();
+            return tmp;
         }
     }
     return "";
@@ -1466,6 +1427,9 @@ void MainWindow::add_new_mail(QString name,int type, QString server, QString log
     emit emailsUpdate();
     e->checkMail();
 }
+// FIXME: This method is madness with so many parameters
+// "result" is which "Blink when" radio button is checked
+// "parser" is the thing to match (Subject or From)
 void MainWindow::edit_mail(QString oldname, QString name,int type, QString server, QString login, QString passwd, int port, bool ssl, int result, QString parser){
     qDebug()<<"EDIT EMAIL "+name;
     addToLog("EDIT EMAIL "+name);
@@ -1726,34 +1690,19 @@ void MainWindow::markHardwareEditing(QString s,bool e){
     }
 }
 void MainWindow::addToLog(QString txt){
+    //qDebug()<<txt;
     if(logging){
-        //qDebug()<<txt;
         (*out)<<txt<<"\n";
         out->flush();
     }
 }
 void MainWindow::resetAlertsOption(){
+    qDebug() << "resetAlertsOption";
     if(patterns.contains(activePatternName)){
         patterns.value(activePatternName)->stop();
     }
     on_buttonOff_clicked();
 }
-/* 
-   not needed now we use real titlebars
-
-bool MainWindow::checkIfCorrectPositionX(int x){
-    QRect desk=QApplication::desktop()->availableGeometry();
-    if(x+100<desk.x()+desk.width() && x+viewer.width()-100>=desk.x())
-        return true;
-    return false;
-}
-bool MainWindow::checkIfCorrectPositionY(int y,int bar){
-    QRect desk=QApplication::desktop()->availableGeometry();
-    if(y>=desk.y() && y+bar-10<desk.y()+desk.height())
-        return true;
-    return false;
-}
-*/
 int MainWindow::checkWordWidth(QString s,int size){
     QFont f(QFont().defaultFamily(),size);
     return QFontMetrics(f).width(s);
@@ -1885,3 +1834,64 @@ void MainWindow::updateColorsOnBigButtons2List(){
     bigButtons2=tmp;
     emit updateBigButtons();
 }
+
+
+// the below was in MainWindow::MainWindow
+
+    //
+    // testing what visiblitity we have into window handling
+    //
+    //connect(&viewer,SIGNAL(closing(QQuickCloseEvent*)),this,SLOT(viewerClosingSlot(QQuickCloseEvent*)));
+    //if(mac()) connect(&viewer,SIGNAL(visibleChanged(bool)),this,SLOT(viewerVisibleChangedSlot(bool)));
+    // instead of above, just watch for when app is quitting, 
+    // and use static bool to make sure we don't quit twice
+    //connect( qApp, SIGNAL(aboutToQuit()), this, SLOT(quit()) );
+    
+    //connect( &viewer, SIGNAL(changeEvent(QEvent *)), this, SLOT(viewerChangeEvent(QEvent*)) );
+    //connect( &viewer, SIGNAL(statusChanged(QQuickView::Status)), this, SLOT(viewerStatusChanged(QQuickView::Status)) );
+    //connect( &viewer, SIGNAL(closing(QQuickCloseEvent*)),this,SLOT(viewerClosing(QQuickCloseEvent*)));
+    //connect( &viewer, SIGNAL(windowStateChanged(Qt::WindowState)),this,SLOT(viewerWindowStateChanged(Qt::WindowState)));
+    //connect( &viewer, SIGNAL(visibilityChanged(QWindow::Visibility)), this, SLOT(viewerVisibilityChanged(QWindow::Visibility)) );
+
+// for testing the above connect()s
+
+/*
+void MainWindow::changeEvent(QEvent* e)
+{
+    qDebug() << "changeEvent " << e;
+    QMainWindow::changeEvent(e);
+}
+// called only on minimize?
+void MainWindow::viewerVisibilityChanged(QWindow::Visibility visibility) {
+    qDebug() << "viewerVisibilityChanged: " << visibility;
+    
+}
+// called when minimize is finished
+void MainWindow::viewerWindowStateChanged(Qt::WindowState state) {
+    qDebug() << "viewerWindowStateChanged: " << state;
+    if( state == Qt::WindowMinimized ) { 
+        qDebug() << "minimized!";
+        viewer.hide();
+    }
+}
+void MainWindow::viewerStatusChanged(QQuickView::Status status) {
+    qDebug() << "viewerStatusChanged: " << status;
+}
+void MainWindow::viewerChangeEvent(QEvent* event) {
+    qDebug() << "viewerChangeEvent: " << event;
+}
+void MainWindow::viewerClosing(QQuickCloseEvent*event){
+    qDebug() << "viewerClosing: "<< event ;
+}
+
+// these three not needed now we're just watching QApp::aboutToQuit() and using quit() for everything
+void MainWindow::viewerClosingSlot(QQuickCloseEvent* event){
+    qDebug() << "viewerClosingSlot: "<< event;
+}
+void MainWindow::viewerVisibleChangedSlot(bool v){
+    qDebug() << "viewerVisibleChangedSlot: "<< v;
+}
+void MainWindow::markViewerAsClosing(){
+    qDebug() << "markViewerAsClosing: ";
+}
+*/

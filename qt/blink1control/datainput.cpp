@@ -1,11 +1,20 @@
+/**
+ * DataInput -- 
+ * 
+ * Handles network or process aspects of IFTTT, URL, File, and Script monitors
+ * (still not sure why this isn't part of Blink1Input)
+ *
+ */
+
 #include "datainput.h"
 #include <QDir>
 #include <QStandardPaths>
+#include <QRegularExpression>
+
 DataInput::DataInput(QObject *parent) : QObject(parent)
 {
     networkManager = new QNetworkAccessManager(this);
     processOutput = "";
-    responseTo=NULL;
 }
 
 DataInput::~DataInput()
@@ -13,219 +22,226 @@ DataInput::~DataInput()
     delete networkManager;
 }
 
+/**
+ * Search for color pattern in given string
+ * contentStr can also be JSON
+ * returns pattern name if successful, or 'nil' if no pattern found
+ * can be in form:
+ *   pattern: policecar 
+ *   pattern: "happy color dance"
+ *   { "pattern": "red flashes" }
+ * 
+ * @param str string to parse
+ * @return parsed color pattern name or empty string if no match
+ */
+QString DataInput::readColorPattern(QString str)
+{
+    QString patt;
+    QRegularExpression   re("\"?pattern\"?:\\s*((\"(.+)\")|((.+)\\s))");
+    QRegularExpressionMatch match = re.match(str);
+    if( match.hasMatch() ) {
+        patt = match.captured( match.lastCapturedIndex() );
+    }
+    return patt;
+}
+/**
+ * Read potential color code in string
+ * @param str string to parse
+ * @return valid QColor or invalid QColor if parsing failed
+ */
+QColor DataInput::readColorCode(QString str)
+{
+    QColor c;
+    QRegularExpression re("(#[A-Fa-f0-9]{6})"); // look for "#cccccc" style hex colorcode
+    QRegularExpressionMatch match = re.match(str);
+    if( match.hasMatch() ) {
+        c.setNamedColor( match.captured( match.lastCapturedIndex()) );
+    }
+    return c;
+}
+/**
+ * Given a string, parse either a color pattern or color code
+ * and trigger system based on that.
+ * 
+ * FIXME: this knows too much about emitting signals
+ *
+ * @param str string to parse
+ * @param type type of monitor running ("ifttt", "url", "file", "script")
+ * @param lastModTime time parsing occurred
+ * @return bool true if match was found, false if not
+ */
+bool DataInput::parsePatternOrColor(QString str, QString type, int lastModTime)
+{
+    bool success = false;
+    // look for pattern
+    QString patternName = readColorPattern( str );
+    bool patternFound = !patternName.isEmpty();
+    qDebug() << "type:"<<type<< " patternName:"<<patternName << "str: "<<str;
+    if( patternFound ) {
+        emit runPattern(patternName, false);
+        emit addReceiveEvent( lastModTime, patternName, type);
+        input->setArg2(patternName);
+        success = true;
+    } 
+    // or look for hex color
+    else { 
+        QColor c = readColorCode( str );
+        bool colorFound = c.isValid();
+        if( colorFound ) { 
+            QString colorstr = c.name().toUpper();
+            emit setColor( c );
+            emit addReceiveEvent( lastModTime, colorstr, type);
+            input->setArg2( colorstr );  // FIXME: arg2 should not be used for lastVal
+            success = true;
+        }
+        else { 
+            qDebug() << "parsePatternOrColor no color found";
+        }
+    }
+    return success;
+}
 
 void DataInput::start()
 {
     QNetworkRequest nr;
     QString url;
-    int typeNumber = typeToInt(type);
-    switch(typeNumber)
-    {
-    case 0: {
+
+    if( type == "ifttt" ) {
         url = "http://api.thingm.com/blink1/eventsall/" + iftttKey;
         nr.setUrl(QUrl(url));
         reply = networkManager->get(nr);
         connect(reply, SIGNAL(finished()), this, SLOT(onFinished()));
         connect(reply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(onError()));
     }
-        break;
-
-    case 1: {
+    else if( type == "url" ) { 
         url = input->arg1();
+        //qDebug() << "datainput:start url: "<<url; 
         if(!url.startsWith("http://") && !url.startsWith("https://"))
             url="http://"+url;
         QUrl correctUrl(url);
-        if(correctUrl.isValid())
-        {
+        if(correctUrl.isValid()) {
             nr.setUrl(QUrl(url));
             reply = networkManager->get(nr);
             connect(reply, SIGNAL(finished()), this, SLOT(onFinished()));
             connect(reply, SIGNAL(error(QNetworkReply::NetworkError)), this, SLOT(onError()));
         }
-        else
-        {
-            emit setValueRet("NOT FOUND");
-            input->setArg2("NOT FOUND");
-            input->setDate(-1);
+        else {
+            input->setArg2("Bad URL");
+            input->setDate(-1);  // FIXME: don't like -1 here
             emit toDelete(this);
         }
     }
-        break;
-
-    case 2: {
+    else if( type == "file" ) { 
         QFileInfo fileInfo;
         fileInfo.setFile(input->arg1());
-        if(!fileInfo.exists()){
-            input->setArg2("NOT FOUND");
+        if( !fileInfo.exists() ) {
+            qDebug() << "datainput:start: no file";
+            input->setArg2("Not Found");
             input->setDate(-1);
         }
-        if(fileInfo.lastModified().toTime_t() != (uint)input->date()) {
-            QFile f(input->arg1());
-            if(!f.open(QIODevice::ReadOnly | QIODevice::Text))
-            {
-                emit setValueRet("NOT FOUND");
-                input->setArg2("NOT FOUND");
-                input->setDate(-1);
-                emit toDelete(this);
-                return;
-            }
-            input->setDate(fileInfo.lastModified().toTime_t());
-            QString txt = "";
-            QTextStream in(&f);
-            txt.append(in.readAll());
-            int idx=txt.indexOf(QRegExp("#([0-9a-fA-F]{6})"));
-            QColor c=QColor("#000000");
-            f.close();
-            if(idx!=-1)
-            {
-                c=QColor(txt.mid(idx,7));
-                emit setColor(c);
-                emit addReceiveEvent(fileInfo.lastModified().toTime_t(), c.name().toUpper(), "FILE");
-                input->setArg2(c.name());
-            }
-            else
-            {
-                QStringList list;
-                list.append("pattern:"); list.append("\"pattern\":");
-                QString patternName;
-                int index=-1;
-                for(int i=0; i<list.count(); i++) {
-                    index = txt.indexOf(list.at(i),0);
-                    if(index != -1)
-                        break;
+        else { 
+            int lastModTime = fileInfo.lastModified().toTime_t(); // why was cast to uint?
+            if( lastModTime > input->date()) {
+                qDebug() << "datainput:start: file newer";
+                QFile f(input->arg1());
+                if(!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                    input->setArg2("Couldn't Open");
+                    input->setDate(-1);  // FIXME: why -1? what does it mean?
+                    emit toDelete(this);
+                    return;
                 }
-                if(index != -1) {
-                    index = txt.indexOf(":", index);
-                    int idx1, idx2;
-                    idx1 = txt.indexOf("\"", index);
-                    idx2 = txt.indexOf("\"", idx1+1);
-                    patternName = txt.mid(idx1+1, idx2-idx1-1);
-                    for(int i=0; i<patternList.count(); i++) {
-                        if(patternList[i] == patternName) {
-                            emit runPattern(patternName, false);
-                            emit addReceiveEvent(fileInfo.lastModified().toTime_t(), patternName, "FILE");
-                            input->setArg2(patternName);
-                            break;
-                        }
-                    }
+                input->setDate( lastModTime); //fileInfo.lastModified().toTime_t());
+                QString txt = "";
+                QTextStream in(&f);
+                txt.append(in.readAll());
 
-                }else{
-                    input->setArg2("NO VALUE");
+                bool good = parsePatternOrColor( txt, type, lastModTime );
+                if( !good ) { 
+                    input->setArg2("Bad Parse");
                 }
+            } // last modified
+            else { 
+                //input->setArg2("Old File");  // FIXME: should do something to indicate older file
+                //input->setDate(-1);
             }
         }
         emit toDelete(this);
     }
-        break;
-
-    case 3: {
-        process = new QProcess;
-        connect(process, SIGNAL(readyReadStandardOutput()), this, SLOT(onProcessOutput()));
-        connect(process, SIGNAL(readyReadStandardError()), this, SLOT(onError()));
-        connect(process, SIGNAL(error(QProcess::ProcessError)), this, SLOT(onError()));
-        connect(process, SIGNAL(finished(int)), this, SLOT(onProcessFinished()));
-        QString path = QStandardPaths::locate(QStandardPaths::DocumentsLocation, input->arg1());
-        QFile f(path);
+    else if( type == "script" ) { 
+        //QString path = QStandardPaths::locate(QStandardPaths::DocumentsLocation, input->arg1());
         QFileInfo fileInfo;
-        fileInfo.setFile(path);
-        if(f.exists()){
-            if(fileInfo.lastModified().toTime_t() != (uint)input->date()){
-                input->setDate(fileInfo.lastModified().toTime_t());
-                process->start(path);
-            }else{
-                emit toDelete(this);
-            }
-        }else
-        {
-            emit setValueRet("NOT FOUND");
-            input->setArg2("NOT FOUND");
+        fileInfo.setFile( input->arg1() );
+        if( !fileInfo.exists() ) {
+            input->setArg2("Not Found");
+            input->setDate(-1);
+            emit toDelete(this);
+        } 
+        else if( !fileInfo.isExecutable() ) { 
+            input->setArg2("Not Executable");
             input->setDate(-1);
             emit toDelete(this);
         }
+        else { 
+            // FIXME: should check new value compare to lastVal
+            // (and FIXME: need to refactor to properly use lastVal for all monitor types)
+            //if(fileInfo.lastModified().toTime_t() != (uint)input->date()){
+            // no, don't do lastModTime check on exec file, jeez
+            input->setDate(fileInfo.lastModified().toTime_t());
+            process = new QProcess;
+            connect(process, SIGNAL(readyReadStandardOutput()), this, SLOT(onProcessOutput()));
+            connect(process, SIGNAL(readyReadStandardError()), this, SLOT(onError()));
+            connect(process, SIGNAL(error(QProcess::ProcessError)), this, SLOT(onError()));
+            connect(process, SIGNAL(finished(int)), this, SLOT(onProcessFinished()));
+            // start process running
+            process->start( fileInfo.canonicalFilePath() );
+        }
     }
-        break;
-
-    default: {
+    else if( type == "none" ) { 
+        //qDebug() << "datainput:start: none type";
+    }
+    else { 
+        qDebug() << "datainput:start: bad type! should never get called";
         emit toDelete(this);
-    }
-        break;
     }
 }
 
+
 void DataInput::onFinished()
 {
-    int date;
+    int lastModTime;
     QString txt;
-
-    int typeNumber = typeToInt(type);
-    switch(typeNumber)
-    {
-    case 0: {
+    
+    if( type == "ifttt" ) {  
         txt = reply->readAll();
-        QString dateString = "";
-        if(input->type().toUpper() == "IFTTT.COM") {
-
-            if(responseTo==NULL) emit iftttToCheck(txt); else emit iftttToCheck(txt,input);
+        QString dateString = "";  // FIXME: what is dateString for?
+        if(input->type() == "ifttt") {  // FIXME: why checking type again?
+            emit iftttToCheck(txt);  // FIXME: why is sending a signal instead of doing what URL & FILE do?
         }
     }
-        break;
+    else if( type == "url" ) { 
+        txt = reply->readAll();
+        QDateTime lastModified = reply->header(QNetworkRequest::LastModifiedHeader).toDateTime();
+        lastModTime = lastModified.toTime_t();
+        qDebug() << "onFinished: url finished: lastMod:"<< lastModTime << " txt: " << txt;
+        
+        if( lastModTime == -1 ) { // missing lastmodified
+            lastModTime = 0; // put as far back in time as possible
+        }
+        if( lastModTime <= input->date() ) {  // old page
+            qDebug() << "onFinished: old url";
+            // FIXME: do something better here
+            input->setArg2( "Not Modified" );  // FIXME: arg2 should not be used for lastVal
+        }
+        else { 
+            input->setDate(lastModTime); // FIXME: blinkinput vs datainput? which is which, omg marcin, really?
 
-    case 1: {
-        QDateTime dt = reply->header(QNetworkRequest::LastModifiedHeader).toDateTime();
-        date = dt.toTime_t();
-        if(date != -1) {
-            if(input->date() != date) {
-                input->setDate(date);
-
-                txt = reply->readAll();
-                int idx=txt.indexOf(QRegExp("#([0-9a-fA-F]{6})"));
-                QColor c=QColor("#000000");
-                if(idx!=-1)
-                {
-                    c=QColor(txt.mid(idx,7));
-                    emit setColor(c);
-                    emit addReceiveEvent(date, c.name().toUpper(), "URL");
-                    input->setArg2(c.name());
-                }
-                else
-                {
-                    QStringList list;
-                    list.append("pattern:"); list.append("\"pattern\":");
-                    QString patternName;
-                    int index=-1;
-                    for(int i=0; i<list.count(); i++) {
-                        index = txt.indexOf(list.at(i),0);
-                        if(index != -1)
-                            break;
-                    }
-
-                    if(index != -1) {
-                        index = txt.indexOf(":", index);
-                        int idx1, idx2;
-                        idx1 = txt.indexOf("\"", index);
-                        idx2 = txt.indexOf("\"", idx1+1);
-                        patternName = txt.mid(idx1+1, idx2-idx1-1);
-
-                        for(int i=0; i<patternList.count(); i++)
-                        {
-                            if(patternName == patternList[i]) {
-                                emit runPattern(patternName, false);
-                                emit addReceiveEvent(date, patternName, "URL");
-                                input->setArg2(patternName);
-                                break;
-                            }
-                        }
-                    }else{
-                        input->setArg2("NO VALUE");
-                    }
-                }
-            }
-        }else{
-            input->setArg2("NO VALUE");
+            parsePatternOrColor( txt, type, lastModTime);
         }
     }
-        break;
+    else { 
+        qDebug() << "onFinished: unexpected type: "<<type;
     }
+
     delete reply;
     emit toDelete(this);
 }
@@ -237,85 +253,38 @@ void DataInput::onProcessOutput()
     processOutput.append(process->readAll());
     readingProcess = false;
 }
+
+// this is for scripts?
 void DataInput::onProcessFinished()
 {
+    qDebug() << "datainput::onProcessFinished";
     while(readingProcess)
         QThread::usleep(200);
     process->close();
     process->deleteLater();
-    int idx = processOutput.indexOf(QRegExp("#([0-9a-fA-F]{6})"));
-    QColor c=QColor("#000000");
-    if(idx!=-1)
-    {
-        c=QColor(processOutput.mid(idx,7));
-        emit setColor(c);
-        emit addReceiveEvent(QDateTime::currentDateTime().toTime_t(), c.name().toUpper(), "SCRIPT");
-        input->setArg2(c.name());
-    }
-    else
-    {
-        bool found = false;
-        int currentIndex = 0;
-        int idx2;
-        QString pName;
-        while(!found)
-        {
-            idx = processOutput.indexOf("\"", currentIndex);
-            if(idx == -1)
-                break;
-            currentIndex = idx+1;
-            idx2 = processOutput.indexOf("\"", currentIndex);
-            if(idx2 == -1)
-                break;
-            currentIndex = idx2+1;
 
-            pName = processOutput.mid(idx+1, idx2-idx-1);
-            for(int i=0; i<patternList.count(); i++)
-            {
-                if(patternList[i] == pName)
-                {
-                    emit runPattern(pName, false);
-                    emit addReceiveEvent(QDateTime::currentDateTime().toTime_t(), pName, "SCRIPT");
-                    input->setArg2(pName);
-                    found = true;
-                    break;
-                }
-            }
+    parsePatternOrColor( processOutput, type, QDateTime::currentDateTime().toTime_t() );
 
-        }
-        if(!found)
-            input->setArg2("NO VALUE");
-    }
     emit toDelete(this);
 }
 
 void DataInput::onError()
 {
-    if(type == "SCRIPT")
-    {
-        //qDebug() << "Script error:";
-        //qDebug() << process->errorString();
-        process->deleteLater();
-//        while(process)
-            QThread::usleep(200);
+    if( type == "ifttt" ) { 
+        input->setArg2("connect error");
     }
-    else
-    {
+    else if( type == "url") {
+        qDebug() << " error on URL " << reply;
+        input->setArg2("bad URL"); // FIXME: hack
         delete reply;
     }
+    else if(type == "script") {
+        qDebug() << "datainput: script error:";
+        //qDebug() << process->errorString();
+        process->deleteLater();  // FIXME: what is deleteLater() for?
+//        while(process)
+        QThread::usleep(200);  // FIXME: why is this here?
+    }
     emit toDelete(this);
-}
-
-int DataInput::typeToInt(QString type)
-{
-    if(type == "IFTTT.COM")
-        return 0;
-    if(type == "URL")
-        return 1;
-    if(type == "FILE")
-        return 2;
-    if(type == "SCRIPT")
-        return 3;
-    return -1;
 }
 

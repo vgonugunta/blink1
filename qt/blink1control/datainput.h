@@ -21,12 +21,17 @@ public:
 
     void start();
 
+    /**
+     * Set type of input monitor
+     * @param t the type, can be "ifttt", "url", "file", "script"
+     */
     void setType(QString t) { type = t; }
     void setRule(QString r) { rule = r; }
     void setInput(Blink1Input* in) { input = in; }
-    void setPattern(Blink1Pattern* pat) { pattern = pat; }
-    void setPatternList(QStringList list) { patternList = list; }
     void setIftttKey(QString iKey) { iftttKey = iKey; }
+    QString readColorPattern( QString str);
+    QColor readColorCode(QString str);
+    bool parsePatternOrColor(QString str, QString type, int lastModTime);
 
 private:
     QNetworkAccessManager *networkManager;
@@ -37,14 +42,10 @@ private:
     QString rule;
 public:
     Blink1Input *input;
-    QTcpSocket *responseTo;
 private:
-    Blink1Pattern *pattern;
-    QStringList patternList;
     QString iftttKey;
     QString processOutput;
 
-    int typeToInt(QString);
     bool readingProcess;
 private slots:
     void onFinished();
@@ -56,9 +57,7 @@ signals:
     void toDelete(DataInput*);
     void runPattern(QString, bool);
     void setColor(QColor);
-    void setValueRet(QString);
     void iftttToCheck(QString);
-    void iftttToCheck(QString,Blink1Input*);
     void addReceiveEvent(int date, QString name, QString from);
 
 };
