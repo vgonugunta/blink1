@@ -105,6 +105,7 @@ void DataInput::start()
 {
     QNetworkRequest nr;
     QString url;
+    //qDebug() << "DataInput:start:"<<type<<":"<<input->arg1();
 
     if( type == "ifttt" ) {
         url = "http://api.thingm.com/blink1/eventsall/" + iftttKey;
@@ -200,7 +201,7 @@ void DataInput::start()
         //qDebug() << "datainput:start: none type";
     }
     else { 
-        qDebug() << "datainput:start: bad type! should never get called";
+        qDebug() << "datainput:start: bad type! should never get called; type="<<type;
         emit toDelete(this);
     }
 }
@@ -225,7 +226,7 @@ void DataInput::onFinished()
         qDebug() << "onFinished: url finished: lastMod:"<< lastModTime << " txt: " << txt;
         
         if( lastModTime == -1 ) { // missing lastmodified
-            lastModTime = 0; // put as far back in time as possible
+            lastModTime = input->date() + 10 ; // so fake it
         }
         if( lastModTime <= input->date() ) {  // old page
             qDebug() << "onFinished: old url";
@@ -233,8 +234,7 @@ void DataInput::onFinished()
             input->setArg2( "Not Modified" );  // FIXME: arg2 should not be used for lastVal
         }
         else { 
-            input->setDate(lastModTime); // FIXME: blinkinput vs datainput? which is which, omg marcin, really?
-
+            input->setDate(lastModTime); // FIXME: blinkinput vs datainput? which is which,omg marcin,really?
             parsePatternOrColor( txt, type, lastModTime);
         }
     }
@@ -271,7 +271,8 @@ void DataInput::onProcessFinished()
 void DataInput::onError()
 {
     if( type == "ifttt" ) { 
-        input->setArg2("connect error");
+        // FIXME: maybe don't report this because we do it periodically?
+        //input->setArg2("connect error");
     }
     else if( type == "url") {
         qDebug() << " error on URL " << reply;
