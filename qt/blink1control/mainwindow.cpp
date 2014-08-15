@@ -78,12 +78,14 @@ MainWindow::MainWindow(QWidget *parent) :
         emit bigButtonsUpdate();
     }
 
+    // FIXME:   this causes Mac menubar to change but not icon?
     QIcon ico = QIcon(":/images/blink1-icon0.png");
-    setWindowIcon(ico);
+    QIcon icobw = QIcon(":/images/blink1-icon0-bw.png");
 
+    setWindowIcon( ico );
     createActions();
     createTrayIcon();
-    trayIcon->setIcon( ico);
+    trayIcon->setIcon( (mac()) ? icobw : ico );
     trayIcon->show();
 
     activePatternName=""; 
@@ -389,7 +391,7 @@ void MainWindow::checkIfttt(QString txt)
             if( input->type() == "ifttt" ) { 
                 // is the event newer than our last event, then trigger!
                 if( evdate > input->date() ) { 
-                    qDebug() << "new ifttt event for "<< input->arg1();
+                    //qDebug() << "new ifttt event for "<< input->arg1();
                     if( evname == input->arg1() ) {  
                         qDebug() << "saving new ifttt event for "<< input->arg1();
                         input->setDate(evdate); // save for next go around
@@ -513,6 +515,15 @@ void MainWindow::saveSettings()
     settings.setValue("enableGamma", enableGamma);
     settings.setValue("firstRun", firstRun);
 
+    settings.setValue("serverHost", serverHost);
+    settings.setValue("serverPort", serverPort);
+
+    settings.setValue("proxyType", proxyType);
+    settings.setValue("proxyHost", proxyHost);
+    settings.setValue("proxyPort", proxyPort);
+    settings.setValue("proxyUser", proxyUser);
+    settings.setValue("proxyPass", proxyPass);
+
     // save patterns
     QJsonArray qarrp;
     foreach (QString nm, patterns.keys() ) {  
@@ -585,6 +596,7 @@ void MainWindow::loadSettings()
             }
     }
     iftttKey=sIftttKey;
+
     autorun      = settings.value("autorun","").toBool();
     dockIcon     = settings.value("dockIcon",true).toBool();
     startmin     = settings.value("startmin","").toBool();
@@ -592,6 +604,40 @@ void MainWindow::loadSettings()
     logging      = settings.value("logging","").toBool();
     enableGamma  = settings.value("enableGamma",false).toBool();
     firstRun     = settings.value("firstRun",true).toBool();
+
+    serverHost = settings.value("serverHost","localhost").toString(); // FIXME: hardcoded default
+    serverPort = settings.value("serverPort", 8934).toInt();     // FIXME: hardcoded default
+    httpserver->setHost( serverHost );
+    httpserver->setPort( serverPort );
+
+    // to-do: finish implementing & documenting proxy support, issue #138
+    // test SOCKS proxy with ssh -ND 9999 you@example.com
+    proxyType = settings.value("proxyType","").toString().toLower(); // "none" or "socks5" or "http"
+    proxyHost = settings.value("proxyHost","").toString(); 
+    proxyPort = settings.value("proxyPort",0).toInt(); 
+    proxyUser = settings.value("proxyUser","").toString();
+    proxyPass = settings.value("proxyPass","").toString();
+
+    if( (proxyType == "socks5" || proxyType == "socks") && proxyHost !="" && proxyPort != 0 ) { 
+        qDebug() << "Setting SOCKS5 proxy";
+        QNetworkProxy proxy;
+        proxy.setType( QNetworkProxy::Socks5Proxy );
+        proxy.setHostName( proxyHost );
+        proxy.setPort( proxyPort );
+        if( proxyUser!="" ) proxy.setUser( proxyUser );
+        if( proxyPass!="" ) proxy.setPassword( proxyPass );
+        QNetworkProxy::setApplicationProxy(proxy);
+    }
+    else if( proxyType == "http" && proxyHost !="" && proxyPort != 0 ) { 
+        qDebug() << "Setting HTTP proxy";
+        QNetworkProxy proxy;
+        proxy.setType( QNetworkProxy::HttpProxy );
+        proxy.setHostName( proxyHost );
+        proxy.setPort( proxyPort );
+        if( proxyUser!="" ) proxy.setUser( proxyUser );
+        if( proxyPass!="" ) proxy.setPassword( proxyPass );
+        QNetworkProxy::setApplicationProxy(proxy);
+    }
 
     QString blink1IndexStr = settings.value("blink1Index","").toString();
     qDebug() << "blink1IndexStr: "<< blink1IndexStr;
