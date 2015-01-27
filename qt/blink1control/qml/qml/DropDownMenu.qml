@@ -3,11 +3,15 @@ import QtQuick 2.0
 Image {
     id: main
     width: 144
-    height: !checked?107:82
+    //height: !checked?107:82
+    height: { if( !isReadOnly && !isSystem ) { 107 } 
+            else if( isReadOnly && isSystem ) { 35 }
+            else { 82 } }
     source: "qrc:images/layout/dropdown-bg.png"
 
     property string pattern_name: ""
-    property bool checked: false
+    property bool isReadOnly: false
+    property bool isSystem: false
 
     signal click()
     signal editPattern()
@@ -29,7 +33,7 @@ Image {
         spacing: 2
 
         Rectangle{
-            visible: !checked
+            visible: !isReadOnly
             width: parent.width-20
             height: 20
             color: "transparent"
@@ -45,7 +49,7 @@ Image {
                 }
                 onClicked: {
                     click()
-                    if(checked) return;
+                    if(isReadOnly) return;
                     editPattern();
                     //mw.stopPattern(inputsList.pnm[lista.currentIndex+1])
                     //editMode=true
@@ -63,11 +67,13 @@ Image {
                 anchors.leftMargin: 30
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Edit pattern"
-                font.pointSize: (!mw.mac())?8:12
+                //font.pointSize: (!mw.mac())?8:12
+                font.pixelSize:12
             }
         }
 
         Rectangle{
+            visible: !isSystem
             width: parent.width-20
             height: 20
             color: "transparent"
@@ -83,7 +89,7 @@ Image {
                 }
                 onClicked: {
                     click()
-                    mw.changePatternReadOnly(pattern_name,!checked)
+                    mw.changePatternReadOnly(pattern_name,!isReadOnly)
                 }
             }
 
@@ -91,7 +97,7 @@ Image {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 source: {
-                    if(checked)
+                    if(isReadOnly)
                         "qrc:images/layout/unlock.png"
                     else
                         "qrc:images/layout/lock.png"
@@ -103,7 +109,7 @@ Image {
                 anchors.verticalCenter: parent.verticalCenter
                 font.pointSize: (!mw.mac())?8:12
                 text: {
-                    if(checked)
+                    if(isReadOnly)
                         "Unlock pattern"
                     else
                         "Lock pattern"
@@ -144,6 +150,7 @@ Image {
             }
         }
         Rectangle{
+            visible: !isSystem
             width: parent.width-20
             height: 20
             color: "transparent"

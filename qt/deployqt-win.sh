@@ -25,7 +25,8 @@ EXE_NAME=Blink1Control.exe
 # Where "windeployqt.exe" lives (and the mingw libs)
 #QT_BIN_PATH=/c/qt/Qt5.2.1/5.2.1/mingw48_32/bin
 #QT_BIN_PATH=/c/Qt/5.3/mingw482_32/bin
-QT_BIN_PATH=/c/qt/Qt5.3.1/5.3/msvc2013/bin
+#QT_BIN_PATH=/c/qt/Qt5.3.1/5.3/msvc2013/bin
+QT_BIN_PATH=/c/qt/5.4/msvc2013/bin
 
 #export VCINSTALLDIR=/c/Program\ Files\ \(x86\)/Microsoft\ Visual\ Studio\ 12.0/VC
 export VCINSTALLDIR=/c/Program\ Files\ \(x86\)/Microsoft\ Visual\ Studio\ 12.0/VC/
@@ -34,7 +35,8 @@ export VCINSTALLDIR=/c/Program\ Files\ \(x86\)/Microsoft\ Visual\ Studio\ 12.0/V
 # path to built application executable
 #BUILD_DIR=build-blink1control-Desktop_Qt_5_2_1_MinGW_32bit-Release/release
 #BUILD_DIR=build-blink1control-Desktop_Qt_5_3_MinGW_32bit-Release/release
-BUILD_DIR=build-blink1control-Desktop_Qt_5_3_MSVC2013_32bit-Release/release
+#BUILD_DIR=build-blink1control-Desktop_Qt_5_3_MSVC2013_32bit-Release/release
+BUILD_DIR=build-blink1control-Desktop_Qt_5_4_MSVC2013_32bit-Release/release
 
 # where the source code lives (and the qml, and the help, and the readme)
 SRC_DIR="../../blink1control"
@@ -110,24 +112,13 @@ WINDEPLOYQT_OPTS+=" --no-webkit"
 ${QT_BIN_PATH}/windeployqt ${WINDEPLOYQT_OPTS}  Blink1Control.exe
 
 
-DO_WEBKIT=0
-if [ "$DO_WEBKIT" -eq 1 ] ; then
-echo "Copying extra WebKit stuff..."
-# fix bug in windeployqt
-# see: https://bugreports.qt-project.org/browse/QTBUG-35211
-cp ${QT_BIN_PATH}/QtWebProcess.exe .
-cp ${QT_BIN_PATH}/Qt5WebKitWidgets.dll .
-cp ${QT_BIN_PATH}/Qt5OpenGL.dll .
-cp ${QT_BIN_PATH}/Qt5PrintSupport.dll  .
-cp ${QT_BIN_PATH}/Qt5MultimediaWidgets.dll  .
-fi
-
 #exit 0   # uncomment for faster testing 
 
 # Build a zip bundle
+echo "zipping up ${APP_DIR}"
 cd ..
-rm -f ${APP_DIR}-win.zip
-zip -r ../${APP_DIR}-win.zip ${APP_DIR}
+rm -f ../${APP_DIR}-win.zip
+zip -q -r ../${APP_DIR}-win.zip ${APP_DIR}
 
 echo
 echo "Created '${APP_DIR}-win.zip'"

@@ -73,18 +73,38 @@ class MainWindow : public QMainWindow
     Q_PROPERTY(QVariantList getRecentEvents READ getRecentEvents NOTIFY recentEventsUpdate)
     Q_PROPERTY(QList<QObject*> getBigButtons READ getBigButtons NOTIFY bigButtonsUpdate)
     Q_PROPERTY(QVariantList getPatternsNames READ getPatternsNames NOTIFY updatePatternsNamesOnUi)
+    Q_PROPERTY(QVariantList getBlink1Serials READ getBlink1Serials NOTIFY updateBlink1Serials)
+    Q_PROPERTY(int blink1Index MEMBER blink1Index)
+
+    // preference properties
+    Q_PROPERTY(bool enableServer MEMBER enableServer NOTIFY prefsUpdate)
+    Q_PROPERTY(bool autorun MEMBER autorun NOTIFY prefsUpdate) 
+    Q_PROPERTY(bool startmin MEMBER startmin NOTIFY prefsUpdate) 
+    Q_PROPERTY(bool dockIcon MEMBER dockIcon NOTIFY prefsUpdate)
+    Q_PROPERTY(bool enableGamma MEMBER enableGamma NOTIFY prefsUpdate)
+
+    Q_PROPERTY(QString serverHost MEMBER serverHost NOTIFY prefsUpdate)
+    Q_PROPERTY(int     serverPort MEMBER serverPort NOTIFY prefsUpdate)
+    Q_PROPERTY(QString  proxyType MEMBER proxyType NOTIFY prefsUpdate)
+    Q_PROPERTY(QString  proxyHost MEMBER proxyHost NOTIFY prefsUpdate)
+    Q_PROPERTY(int      proxyPort MEMBER proxyPort NOTIFY prefsUpdate)
+    Q_PROPERTY(QString  proxyUser MEMBER proxyUser NOTIFY prefsUpdate)
+    Q_PROPERTY(QString  proxyPass MEMBER proxyPass NOTIFY prefsUpdate)
+
 
 public:
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
 
 public slots:
-
+    
     void quit();
     void changeMinimizeOption();
     void showNormal();
     void showMinimize();
     void updateBlink1();
+    void blink1Blink( QString blink1serial, QString color, int millis );
+    void blink1SetColorById( QColor color, int millis, QString blink1serial, int ledn );
     void showAboutDialog();
     void copyToClipboard( QString txt );
 
@@ -112,14 +132,16 @@ public slots:
     QList<QObject*> getHardwareList();
     QList<QObject*> getInputsList();
     QList<QObject*> getIFTTTList();
-    QVariantList getRecentEvents();
-    QVariantList getPatternsNames();
+    QVariantList getRecentEvents();  // qml
+    QVariantList getPatternsNames(); // qml
+    QVariantList getBlink1Serials(); // qml
     QList<QObject*> getBigButtons();
 
     void refreshBlink1State();
 
     void setColorToBlinkAndChangeActivePatternName(QColor,QString,int f=100);
     void setColorToBlink(QColor,int f);
+    void setColorToBlinkN(QColor c, int fademillis, int ledn);
     void removeRecentEvent(int idx);
     void removeAllRecentEvents();
 
@@ -136,6 +158,7 @@ public slots:
     QString getBlinkStatus();
     QString getIftttKey();
     QString getBlinkKey();
+    void setBlink1Index( QString blink1indexstr );
 
     void playOrStopPattern(QString name);
     void playPattern(QString name);
@@ -168,6 +191,7 @@ public slots:
     void updatePatternsList();
     void changeInputName(QString oldName,QString newName);
 
+    void updatePreferences();
     void setAutorun();
     void showhideDockIcon();    
     void checkInput(QString key);
@@ -236,26 +260,32 @@ public slots:
 
     // FUNCTIONS FOR HTTP SERVER
     void regenerateBlink1Id();
-    QJsonArray getCatchedBlinkId();
+    QJsonArray getCachedBlinkId();
     QColor getCurrentColor();
     QMap<QString,Blink1Pattern*> getFullPatternList();
     QMap<QString,Blink1Input*> getFullInputList();
     bool addNewPatternFromPatternStr(QString name, QString patternStr);
     void startOrStopLogging(bool);
     bool getLogging();
+    QString getLogFileName();
     void updateColorsOnBigButtons2List();
 
+    void setStartupPattern( QString patternName );
+    
+    void settingsExport( QString filepath );
+    void settingsImport( QString filepath );
+    void osFixes();
 
-private:
+ private:
     QtQuick2ApplicationViewer viewer;
 
-    void loadSettings();
-    void saveSettings();
+    void settingsLoad();
+    void settingsLoad( QSettings & settings );
+    void settingsSave(); 
+    void settingsSave( QSettings & settings );
 
     void createActions();
     void createTrayIcon();
-
-    QString m_sSettingsFile;
 
     QAction *minimizeAction;
     QAction *restoreAction;
@@ -272,10 +302,12 @@ private:
 
     QSystemTrayIcon *trayIcon;
     QMenu *trayIconMenu;
-    //QShortcut* resetAlertsShortcut;
+    QShortcut* resetAlertsShortcut;
 
     QTimer* blink1timer;
     blink1_device* blink1dev;
+    //bool blink1Refreshing;
+    int refreshCounter;
 
     uint8_t mode;
     QColor cc;
@@ -305,15 +337,27 @@ private:
 
     QTimer *inputsTimer;
     int inputTimerCounter;
-    int lastIftttDate;    // timestamp of the last IFTTT event we received
+    qint64 lastIftttDate;    // timestamp of the last IFTTT event we received
     bool isIftttChecked;  // FIXME: only check IFTTT once, even tho multiple DataInputs for it
+
+    HttpServer *httpserver;
+
+    bool refreshBlink1s;
+    int blink1Index;
+    QString getTimeFromInt(int t);
+    bool mk2;
+    bool logging;
+    QFile *logFile;
+    QTextStream *logstream;
+    bool fromPattern;
+
     bool autorun;
     bool dockIcon;
     bool startmin;
     bool enableServer;
     bool enableGamma;
     bool firstRun;
-
+    
     QString serverHost;
     int     serverPort; 
 
@@ -323,19 +367,12 @@ private:
     QString proxyUser;
     QString proxyPass;
 
-    int blink1Index;
-    QString getTimeFromInt(int t);
-    bool mk2;
-    bool logging;
-    QFile *logFile;
-    QTextStream *out;
-    bool fromPattern;
 
-    HttpServer *httpserver;
 
 signals:
     void patternsUpdate();
     void updatePatternsNamesOnUi();
+    void updateBlink1Serials();
 
     void inputsUpdate();
     void updateActivePatternName();
@@ -346,6 +383,7 @@ signals:
     void iftttUpdate();
     void ledsUpdate();
     void deviceUpdate();
+    void prefsUpdate();
 private slots:
     void updateInputs();
     void deleteDataInput(DataInput *dI);

@@ -16,7 +16,8 @@
 # Platform-specific notes:
 #
 # Mac OS X 
-#   - Install Xcode with "Unix Dev Support" and "Command-line tools" (in Preferences)
+#   - Install XCode
+#   - In Terminal, "xcode-select --install" to install command-line tools
 #   - make
 #
 # Windows XP/7  
@@ -24,12 +25,12 @@
 #   - make
 #
 # Linux (Ubuntu) 
-#   - apt-get install build-essential pkg-config libusb-1.0-0-dev 
+#   - apt-get install build-essential pkg-config libusb-1.0-0-dev
 #   - make
 #
 # Linux (Fedora 18+)
 #   - yum install make gcc 
-#   - make EXEFLAGS=     (yes, leave it blank)
+#   - make 
 #
 # Linux (Fedora 17)
 #   - yum install make gcc libusb1-static glibc-static
@@ -58,7 +59,7 @@
 #   - exit
 #   
 # Raspberry Pi
-#   - apt-get install libusb-1.0.0-dev
+#   - apt-get install build-essential pkg-config libusb-1.0.0-dev 
 #   - make
 #
 # BeagleBone / BeagleBoard (on Angstrom Linux)
@@ -74,6 +75,8 @@
 # "HIDAPI" type is best for Mac, Windows, Linux Desktop, 
 #  but has dependencies on iconv, libusb-1.0, pthread, dl
 #
+# "HIDAPI_HIDRAW" uses udev instead of libusb
+#
 # "HIDDATA" type is best for low-resource Linux, 
 #  and the only dependencies it has is libusb-0.1
 #
@@ -81,9 +84,11 @@
 #
 
 USBLIB_TYPE ?= HIDAPI
+#USBLIB_TYPE = HIDAPI_HIDRAW
 #USBLIB_TYPE = HIDDATA
 
 # uncomment for debugging HID stuff
+# or make with:   CFLAGS=-DDEBUG_PRINTF make
 #CFLAGS += -DDEBUG_PRINTF
 
 
@@ -107,24 +112,29 @@ ifeq "$(UNAME)" "FreeBSD"
 endif
 
 
-GIT_TAG="$(strip $(shell git tag | tail -1))"
-MACH_TYPE="$(strip $(shell uname -m))"
+MACH_TYPE:="$(strip $(shell uname -m))"
+GIT_TAG:="$(strip $(shell git tag 2>&1 | tail -1 | cut -f1 -d' '))"
+# deal with case of no git or no git tags, check for presence of "v" (i.e. "v1.93")
+ifneq ($(findstring v,$(GIT_TAG)), v)
+  GIT_TAG:="v0"
+endif
 
 BLINK1_VERSION="$(GIT_TAG)-$(OS)-$(MACH_TYPE)"
-
 
 
 
 #################  Mac OS X  ##################################################
 ifeq "$(OS)" "macosx"
 LIBTARGET = libBlink1.dylib
-CFLAGS += -mmacosx-version-min=10.6
+CFLAGS += -mmacosx-version-min=10.6 
+#CFLAGS += -fsanitize=address
 
 ifeq "$(USBLIB_TYPE)" "HIDAPI"
 CFLAGS += -DUSE_HIDAPI
 CFLAGS += -arch i386 -arch x86_64
 # don't need pthread with clang
 #CFLAGS += -pthread
+CFLAGS += -O2 -D_THREAD_SAFE -MT MD -MP 
 CFLAGS += -I./hidapi/hidapi 
 OBJS = ./hidapi/mac/hid.o
 endif
@@ -145,8 +155,10 @@ LIBFLAGS = -dynamiclib -o $(LIBTARGET) -Wl,-search_paths_first $(LIBS)
 EXE=
 
 INSTALL = install -D
-EXELOCATION ?= /usr/local/bin
-LIBLOCATION ?= /usr/local/lib
+PREFIX ?= /usr/local
+EXELOCATION ?= $(PREFIX)/bin
+LIBLOCATION ?= $(PREFIX)/lib
+INCLOCATION ?= $(PREFIX)/include
 
 endif
 
@@ -179,12 +191,15 @@ LIB_EXTRA = lib /machine:i386 /def:blink1-lib.def
 INSTALL = cp
 EXELOCATION ?= $(SystemRoot)/system32
 LIBLOCATION ?= $(SystemRoot)/system32
+# not sure where this really should point
+INCLOCATION ?= $(SystemRoot)/system32
 
 endif
 
 #################  Linux  ####################################################
 ifeq "$(OS)" "linux"
-LIBTARGET = blink1-lib.so
+LIBTARGET = libblink1.so
+# was blink1-lib.so
 
 ifeq "$(USBLIB_TYPE)" "HIDAPI"
 CFLAGS += -DUSE_HIDAPI
@@ -194,6 +209,14 @@ CFLAGS += `pkg-config libusb-1.0 --cflags` -fPIC
 LIBS   += `pkg-config libusb-1.0 --libs` -lrt -lpthread -ldl
 endif
 
+ifeq "$(USBLIB_TYPE)" "HIDAPI_HIDRAW"
+CFLAGS += -DUSE_HIDAPI
+CFLAGS += -I./hidapi/hidapi 
+OBJS = ./hidapi/linux/hid.o
+CFLAGS += `pkg-config libusb-1.0 --cflags` -fPIC
+LIBS   += `pkg-config libusb-1.0 --libs` `pkg-config libudev --libs` -lrt 
+endif
+
 ifeq "$(USBLIB_TYPE)" "HIDDATA"
 CFLAGS += -DUSE_HIDDATA
 OBJS = ./hiddata.o
@@ -201,19 +224,23 @@ CFLAGS += `pkg-config libusb --cflags` -fPIC
 LIBS   += `pkg-config libusb --libs` 
 endif
 
-EXEFLAGS = -static
+# static doesn't work on Ubuntu 13+
+#EXEFLAGS = -static
 LIBFLAGS = -shared -o $(LIBTARGET) $(LIBS)
 EXE=
 
 INSTALL = install -D
-EXELOCATION ?= /usr/local/bin
-LIBLOCATION ?= /usr/local/lib
+PREFIX ?= /usr/local
+EXELOCATION ?= $(PREFIX)/bin
+LIBLOCATION ?= $(PREFIX)/lib
+INCLOCATION ?= $(PREFIX)/include
 
 endif
 
 ################  FreeBSD  ###################################################
 ifeq "$(OS)" "freebsd"
-LIBTARGET = blink1-lib.so
+LIBTARGET = libblink1.so
+# was blink1-lib.so
 
 ifeq "$(USBLIB_TYPE)" "HIDAPI"
 CFLAGS += -DUSE_HIDAPI
@@ -241,14 +268,16 @@ LIBFLAGS = -shared -o $(LIBTARGET) $(LIBS)
 EXE=
 
 INSTALL = install -D
-EXELOCATION ?= /usr/local/bin
-LIBLOCATION ?= /usr/local/lib
+PREFIX ?= /usr/local
+EXELOCATION ?= $(PREFIX)/bin
+LIBLOCATION ?= $(PREFIX)/lib
+INCLOCATION ?= $(PREFIX)/include
 
 endif
 
 #################  WRT Linux  ################################################
-ifeq "$(OS)" "wrt"
-LIBTARGET = blink1-lib.so
+ifeq "$(OS)" "wrtlinux"
+LIBTARGET = libblink1.so
 
 # HIDAPI build doesn't work, use HIDDATA instead
 ifeq "$(USBLIB_TYPE)" "HIDAPI"
@@ -274,24 +303,56 @@ EXE=
 
 endif
 
-##############  Cross-compile WRT Linux  #####################################
-ifeq "$(OS)" "wrtcross"
+##############  Cross-compile WRT Linux for Arduino Yun  #####################
+ifeq "$(OS)" "yun"
+LIBTARGET = libblink1.so
 
-ifeq "$(USBLIB_TYPE)" "HIDDATA"
+#ifeq "$(USBLIB_TYPE)" "HIDDATA"
 CFLAGS += -DUSE_HIDDATA
 OBJS = ./hiddata.o
 
-WRT_SDK_HOME := $(HOME)/projects/openwrt/sdk/OpenWrt-SDK-ar71xx-for-Linux-i686-gcc-4.3.3+cs_uClibc-0.9.30.1
-CC = $(WRT_SDK_HOME)/staging_dir/toolchain-mips_r2_gcc-4.3.3+cs_uClibc-0.9.30.1/usr/bin/mips-openwrt-linux-gcc
-LD = $(WRT_SDK_HOME)/staging_dir/toolchain-mips_r2_gcc-4.3.3+cs_uClibc-0.9.30.1/usr/bin/mips-openwrt-linux-ld
-CFLAGS += "-I$(WRT_SDK_HOME)/staging_dir/target-mips_r2_uClibc-0.9.30.1/usr/include" -fPIC
-LIBS   += "$(WRT_SDK_HOME)/staging_dir/target-mips_r2_uClibc-0.9.30.1/usr/lib/libusb.a"
-#LDFLAGS += -static
+WRT_SDK_HOME := $(HOME)/openwrt/OpenWrt-SDK-ar71xx-for-linux-x86_64-gcc-4.6-linaro_uClibc-0.9.33.2
+WRT_TOOLCHAIN_ROOT=$(strip $(shell ls -d $(WRT_SDK_HOME)/staging_dir/toolchain-* | tail -1))
+WRT_TARGET_ROOT=$(strip $(shell ls -d $(WRT_SDK_HOME)/staging_dir/target-* | tail -1))
+STAGING_DIR=$(WRT_SDK_HOME)/staging_dir
+
+CC = $(WRT_TOOLCHAIN_ROOT)/bin/mips-openwrt-linux-gcc
+LD = $(WRT_TOOLCHAIN_ROOT)/bin/mips-openwrt-linux-ld
+CFLAGS += -I$(WRT_TARGET_ROOT)/usr/include
+LIBS += -L$(WRT_TARGET_ROOT)/usr/lib -lusb -lusb-1.0
+export STAGING_DIR=$$(STAGING_DIR)
+
+#endif
+
+#EXEFLAGS = -static
+LIBFLAGS = -o $(LIBTARGET) $(LIBS)
+EXE=
 
 endif
 
+##############  Cross-compile WRT Linux  #####################################
+ifeq "$(OS)" "wrt"
+LIBTARGET = libblink1.so
+
+#ifeq "$(USBLIB_TYPE)" "HIDDATA"
+CFLAGS += -DUSE_HIDDATA
+OBJS = ./hiddata.o
+
+WRT_SDK_HOME := $(HOME)/openwrt/OpenWrt-SDK-brcm47xx-for-linux-i486-gcc-4.6-linaro_uClibc-0.9.33.2
+WRT_TOOLCHAIN_ROOT=$(strip $(shell ls -d $(WRT_SDK_HOME)/staging_dir/toolchain-* | tail -1))
+WRT_TARGET_ROOT=$(strip $(shell ls -d $(WRT_SDK_HOME)/staging_dir/target-* | tail -1))
+STAGING_DIR=$(WRT_SDK_HOME)/staging_dir
+
+CC = $(WRT_TOOLCHAIN_ROOT)/bin/mips*-openwrt-linux-gcc
+LD = $(WRT_TOOLCHAIN_ROOT)/bin/mips*-openwrt-linux-ld
+CFLAGS += -I$(WRT_TARGET_ROOT)/usr/include
+LIBS += -L$(WRT_TARGET_ROOT)/usr/lib -lusb -lusb-1.0
+export STAGING_DIR=$$(STAGING_DIR)
+
+#endif
+
 EXEFLAGS = -static
-LIBFLAGS = -shared -o $(LIBTARGET) $(LIBS)
+#LIBFLAGS = -shared -o $(LIBTARGET) $(LIBS)
 EXE=
 
 endif
@@ -333,7 +394,7 @@ help:
 	@echo
 
 msg: 
-	@echo "Building for OS=$(OS) BLINK1_VERSION=$(BLINK1_VERSION)"
+	@echo "Building for OS=$(OS) BLINK1_VERSION=$(BLINK1_VERSION) USBLIB_TYPE=$(USBLIB_TYPE)"
 
 
 $(OBJS): %.o: %.c
@@ -362,6 +423,7 @@ package: lib blink1-tool
 install: all
 	$(INSTALL) blink1-tool$(EXE) $(DESTDIR)$(EXELOCATION)/blink1-tool$(EXE)
 	$(INSTALL) $(LIBTARGET) $(DESTDIR)$(LIBLOCATION)/$(LIBTARGET)
+	$(INSTALL) blink1-lib.h $(DESTDIR)$(INCLOCATION)/blink1-lib.h
 
 .PHONY: install
 
@@ -370,11 +432,15 @@ clean:
 	rm -f $(LIBTARGET)
 	rm -f blink1-tiny-server.o blink1-tool.o hiddata.o
 	rm -f server/mongoose/mongoose.o
+	rm -f blink1-tool$(EXE) blink1-tiny-server$(EXE)
 
 distclean: clean
 	rm -f blink1-tool$(EXE)
 	rm -f blink1-tiny-server$(EXE)
 	rm -f $(LIBTARGET) $(LIBTARGET).a
+	#rm blink1-lib.{a,lib,exp,dll,def}
+	rm libblink1.so 
+	rm blink1-tool.exe
 
 # show shared library use
 # in general we want minimal to no dependecies for blink1-tool

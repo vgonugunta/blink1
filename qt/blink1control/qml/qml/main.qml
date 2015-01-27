@@ -1,7 +1,9 @@
 import QtQuick 2.2
 import "content"
 import QtQuick.Controls 1.2
+import QtQuick.Controls.Styles 1.2
 import QtGraphicalEffects 1.0
+import QtQuick.Layouts 1.1
 
 
 
@@ -84,6 +86,9 @@ Image{
         colorwheel1.setQColorAndTime(x,t)//1.0)
         colorwheel1.appAction=false
     }
+
+    PreferencesWindow { id: prefsWindow }
+
     /// VIRTUAL BLINK
     Image{
         id: devicePanel
@@ -95,7 +100,8 @@ Image{
         Text{
             text: "Device"
             color: "white"
-            font.pointSize: (!mw.mac())?10:13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize:13
             anchors.left: parent.left
             anchors.leftMargin: 50
             anchors.top: parent.top
@@ -132,7 +138,7 @@ Image{
                 anchors.fill: pods2
                 opacity: 0.5
             }
-
+            
             Rectangle {
                 id: virtualBlink1Color
                 visible: false
@@ -144,13 +150,59 @@ Image{
                 radius: width*0.5
                 anchors.centerIn: parent
             }
-
         }
+
+        Button {   // this is a holder for the action which gives us Cmd-R shortcut. FIXME: easier way?
+            tooltip: "Reset alerts"
+            //iconSource: "qrc:images/stop.png"
+            anchors.left: parent.left
+            anchors.top: parent.top 
+            anchors.leftMargin:13
+            anchors.topMargin:50 
+            style: ButtonStyle { 
+                background: Rectangle { 
+                    //radius: 4
+                    border.color: control.hovered ? "#d2d2d2"  : "transparent"
+                    color: control.pressed ? "#f4f4f4" : "transparent"
+               }
+            }
+            onClicked: mw.resetAlertsOption()  // why do I have to do both onClicked and Action?
+            Action {
+                //id: openAction
+                text: "&Reset alerts"
+                shortcut: "Ctrl+R"
+                onTriggered: mw.resetAlertsOption()
+            }
+        }
+        Button {
+            tooltip: "Open Advanced Preferences"
+            //iconSource: "qrc:images/layout/select-bg-right.png"
+            iconSource: "qrc:images/gear.png"
+            anchors.right: parent.right 
+            anchors.top: parent.top 
+            anchors.rightMargin:13
+            anchors.topMargin:50
+            style: ButtonStyle { 
+                background: Rectangle {
+                    radius: 4
+                    border.color: control.hovered ? "#d2d2d2"  : "transparent"
+                    color: control.pressed ? "#f4f4f4" : "transparent"
+                }
+            }
+            onClicked:  prefsWindow.visible = !prefsWindow.visible
+            Action {
+                text: "Open Advanced Preferences"
+                shortcut: "Ctrl+,"
+                onTriggered: prefsWindow.visible = !prefsWindow.visible
+            }
+        }
+
         //// KONIEC VIRTUAL BLINK
         Text{
             text: "Status:"
             id: blinkStatuss
-            font.pointSize: (!mw.mac())?10:13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize: 13
             anchors.left: parent.left
             anchors.leftMargin: 25
             anchors.bottom: parent.bottom
@@ -161,7 +213,8 @@ Image{
         Text{
             id: blinkStatus
             text: mw.blink1
-            font.pointSize: (!mw.mac())?10:13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize: 13
             anchors.left: devicePanel.left
             anchors.leftMargin: 130
             anchors.top: blinkStatuss.top
@@ -172,8 +225,9 @@ Image{
             text: "Playing pattern:"
             anchors.left: blinkStatuss.left
             anchors.top: blinkStatuss.bottom
-            anchors.topMargin: 10
-            font.pointSize: (!mw.mac())?10:13
+            anchors.topMargin: 13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize: 13
             color: "grey"
         }
         Text{
@@ -182,7 +236,8 @@ Image{
             anchors.left: blinkStatus.left
             anchors.top: activePattern.top
             color: "black"
-            font.pointSize: (!mw.mac())?10:13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize:13
             elide: Text.ElideMiddle
             width: 140
             MouseArea{
@@ -208,7 +263,8 @@ Image{
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 55
             color: "grey"
-            font.pointSize: (!mw.mac())?10:13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize: 13
         }
         TextInput{
             id: blinkidText
@@ -218,7 +274,8 @@ Image{
             selectByMouse: true
             readOnly: true
             color: "black"
-            font.pointSize: (!mw.mac())?10:13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize: 13
         }
 
         Text{
@@ -228,7 +285,8 @@ Image{
             anchors.top: blinkid.bottom
             anchors.topMargin: 10
             color: "grey"
-            font.pointSize: (!mw.mac())?10:13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize: 13
             MouseArea{
                 anchors.fill: parent
                 acceptedButtons: Qt.RightButton
@@ -245,7 +303,8 @@ Image{
             selectByMouse: true
             readOnly: true
             color: "black"
-            font.pointSize: (!mw.mac())?10:13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize: 13
             MouseArea{
                 anchors.fill: parent
                 acceptedButtons: Qt.RightButton
@@ -265,7 +324,8 @@ Image{
         Text{
             id: recentEventsTitle
             text: "Recent Events"
-            font.pointSize: (!mw.mac())?10:13
+            //font.pointSize: (!mw.mac())?10:13
+            font.pixelSize: 13
             anchors.left: parent.left
             anchors.leftMargin: 50
             anchors.top: parent.top
@@ -329,14 +389,16 @@ Image{
                         text: model.modelData.substring(model.modelData.indexOf("-")+1)
                         width: 165
                         wrapMode: Text.WordWrap    //wrapMode: Text.WrapAnywhere
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize: 12
                     }
                     Text{
                         // FIXME: really?
                         text: model.modelData.substring(0,model.modelData.indexOf("-"))
                         color: "grey"
                         wrapMode: Text.WrapAnywhere
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize: 12
                     }
                 }
             }
@@ -349,7 +411,8 @@ Image{
             upSrc: "qrc:images/layout/dissmiss-all-up.png"
             downSrc: "qrc:images/layout/dissmiss-all-down.png"
             label.color: "#555555"
-            label.font.pointSize: (!mw.mac())?8:10
+            //label.font.pointSize: (!mw.mac())?8:10
+            label.font.pixelSize: 10
             onClicked:{
                 onClicked: mw.removeAllRecentEvents()
                 exitEditMode()
@@ -393,7 +456,8 @@ Image{
             visible: tabs.current!=5
             label.text: "Add Pattern"
             label.color: "black"
-            label.font.pointSize:  if(mw.mac()) 11; else 8;
+            //label.font.pointSize:  if(mw.mac()) 11; else 8;
+            label.font.pixelSize: 11
             upSrc: "qrc:images/layout/btn-add2-up.png"
             downSrc: "qrc:images/layout/btn-add2-down.png"
             anchors.right: parent.right
@@ -576,7 +640,8 @@ Image{
                             }
                             selectByMouse: true
                             maximumLength: 20
-                            font.pointSize: (!mw.mac())?8:12
+                            //font.pointSize: (!mw.mac())?8:12
+                            font.pixelSize:12
                             onAccepted: {
                                 ma.visible=true
                                 pname.focus=false
@@ -785,7 +850,8 @@ Image{
                             }
 
                             width: 13
-                            font.pointSize: (!mw.mac())?8:12
+                            //font.pointSize: (!mw.mac())?8:12
+                            font.pixelSize:12
                             text: {
                                 var tmp
                                 var tmp2=+model.modelData.repeats
@@ -863,7 +929,8 @@ Image{
                         onClicked: {
                             background2.visible=true
                             dropDownMenu.visible=true
-                            dropDownMenu.checked=model.modelData.isReadOnly
+                            dropDownMenu.isReadOnly = model.modelData.isReadOnly
+                            dropDownMenu.isSystem = model.modelData.isSystem
                             dropDownMenu.pattern_name=model.modelData.name
                             dropDownMenu.x=colorPatternsPanel.x+lista.x+lista.currentItem.x+lista.currentItem.width-dropDownMenu.width
                             var tmp=colorPatternsPanel.y+lista.y+lista.currentItem.y+lista.currentItem.height-lista.contentY
@@ -940,7 +1007,8 @@ Image{
                         anchors.horizontalCenterOffset: 10
                         text: ""  // "locked"
                         color: "black"
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                 }
             }
@@ -971,12 +1039,13 @@ Image{
                     id: blinkControlsPanel
                     width: 822
                     height: 232
-                    title: "Blink controls"
+                    title: "blink(1) controls"
 
                     anchors.left: parent.left
                     anchors.leftMargin: 10
                     anchors.top: parent.top
                     anchors.topMargin: 20
+
                     ListView{
                         id: bigButtons1
                         anchors.left: parent.left
@@ -1057,7 +1126,8 @@ Image{
                             }
                             Text{
                                 text: name
-                                font.pointSize: (!mw.mac())?10:12
+                                //font.pointSize: (!mw.mac())?10:12
+                                font.pixelSize:12
                                 anchors.bottom: parent.bottom
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 color: "#666666"
@@ -1082,6 +1152,7 @@ Image{
                             }
                         }
                     }
+
                     ListView{
                         function updateColors(){
                             var tmp=bigButtons2.contentX
@@ -1137,7 +1208,8 @@ Image{
                                 wrapMode: Text.WrapAnywhere
                                 width: parent.width
                                 horizontalAlignment: Text.AlignHCenter
-                                font.pointSize: (!mw.mac())?10:12
+                                //font.pointSize: (!mw.mac())?10:12
+                                font.pixelSize:12
                                 maximumLength: 12
                                 color: "#666666"
                                 selectByMouse: true
@@ -1289,7 +1361,8 @@ Image{
                         Text{
                             anchors.top: parent.bottom
                             anchors.topMargin: 2
-                            font.pointSize: (!mw.mac())?10:12
+                            //font.pointSize: (!mw.mac())?10:12
+                            font.pixelSize:12
                             anchors.horizontalCenter: parent.horizontalCenter
                             color: "#666666"
                             text: "Add"
@@ -1306,6 +1379,7 @@ Image{
                     }
                 }
             }
+            // IFTTT tab
             Rectangle {
                 id: pattlist
                 property string title: "IFTTT"
@@ -1344,28 +1418,30 @@ Image{
                         width: 170
                         font.bold: true
                         color: "#999999"
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         text: "Pattern"
                         width: 170
                         font.bold: true
                         color: "#999999"
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         text: "Last Event"
                         width: 138
                         font.bold: true
                         color: "#999999"
-                        font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         text: "Source"
                         width: 160
                         font.bold: true
                         color: "#999999"
-                        font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                 }
                 ScrollView {
@@ -1470,7 +1546,8 @@ Image{
                                     selectByMouse: true
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.verticalCenterOffset: -5
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                     onAccepted: {
                                         mai.visible=true
                                         focus=false
@@ -1520,7 +1597,8 @@ Image{
                                     text: if(model.modelData.patternName==="") "no pattern chosen"; else model.modelData.patternName
                                     font.underline: (model.modelData.patternName==="")?true:false
                                     color: (model.modelData.patternName==="")?"#777777":"black"
-                                    font.pointSize: if(mw.mac()) 11; else 8;
+                                    //font.pointSize: if(mw.mac()) 11; else 8;
+                                    font.pixelSize: 11;
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.verticalCenterOffset: 2
                                     MouseArea {
@@ -1574,7 +1652,8 @@ Image{
                                     height: 25
                                     width: 130
                                     text: model.modelData.time
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                 }
                                 Text{
                                     id: lSource
@@ -1583,7 +1662,8 @@ Image{
                                     height: 25
                                     width: 160
                                     text: model.modelData.arg2
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                 }
 
                                 PushButton{
@@ -1665,35 +1745,40 @@ Image{
                         text: "Name"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 70
                         text: "Type"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 183
                         text: "Path"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 128
                         text: "Last val"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 133
                         text: "Frequency"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                 }
                 ScrollView {
@@ -1861,7 +1946,8 @@ Image{
                                     text: model.modelData.type
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.verticalCenterOffset: -5
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                     MouseArea {
                                         id: ma22
                                         cursorShape: Qt.PointingHandCursor
@@ -1988,7 +2074,8 @@ Image{
                                     height: 25
                                     width: 133
                                     text: model.modelData.arg2
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                 }
 
                                 Text{
@@ -1996,7 +2083,8 @@ Image{
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.verticalCenterOffset: -5
                                     width: 70
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                     text: {
                                         var tmp=model.modelData.freq
                                         if(tmp==1) "5 sec";
@@ -2134,35 +2222,40 @@ Image{
                         text: "Name"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 145
                         text: "Mail Account"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 72
                         text: "Refresh rate"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 133
                         text: "Pattern"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 133
                         text: "Last status"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                 }
                 ScrollView {
@@ -2261,7 +2354,8 @@ Image{
                                     width: 133
                                     text: model.modelData.name
                                     clip: true
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                 }
                                 Text{
                                     id: mailaccount
@@ -2270,14 +2364,16 @@ Image{
                                     anchors.verticalCenterOffset: -5
                                     width: 150
                                     text: model.modelData.email
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                 }
                                 Text{
                                     id: pFreqM
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.verticalCenterOffset: -5
                                     width: 70
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                     text: {
                                         var tmp=model.modelData.freq
                                         if(tmp===12) "1 min";
@@ -2331,7 +2427,8 @@ Image{
                                     text: if(model.modelData.patternName==="") "no pattern chosen"; else model.modelData.patternName
                                     font.underline: (model.modelData.patternName==="")?true:false
                                     color: (model.modelData.patternName==="")?"#777777":"black"
-                                    font.pointSize: if(mw.mac()) 11; else 8;
+                                    //font.pointSize: if(mw.mac()) 11; else 8;
+                                    font.pixelSize:11
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.verticalCenterOffset: 2
                                     MouseArea {
@@ -2387,7 +2484,8 @@ Image{
                                     text: model.modelData.value
                                     color: (text==="CONNECTION ERROR")? "#c80b0b": "black"
                                     font.underline: (model.modelData.getErrorsList.length>0)? true: false
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                     MouseArea{
                                         anchors.fill: parent
                                         cursorShape: (model.modelData.getErrorsList.length>0)?Qt.PointingHandCursor:Qt.ArrowCursor
@@ -2486,35 +2584,40 @@ Image{
                         text: "Name"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 95
                         text: "Type"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 125
                         text: "Refresh rate"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 155
                         text: "Pattern"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                     Text{
                         width: 133
                         text: "Last status"
                         color: "#999999"
                         font.bold: true
-                        font.pointSize: (!mw.mac())?8:12
+                        //font.pointSize: (!mw.mac())?8:12
+                        font.pixelSize:12
                     }
                 }
                 ScrollView {
@@ -2606,7 +2709,8 @@ Image{
                                     width: 133
                                     text: model.modelData.name
                                     clip: true
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                 }
                                 Text{
                                     id: typeHardware
@@ -2614,7 +2718,8 @@ Image{
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.verticalCenterOffset: -5
                                     width: 100
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                     text: {
                                         var tmp=model.modelData.type
                                         if(tmp===0){
@@ -2631,7 +2736,8 @@ Image{
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.verticalCenterOffset: -5
                                     width: 70
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                     text: {
                                         var tmp=model.modelData.freq
                                         if(tmp===12) "1 min";
@@ -2690,7 +2796,8 @@ Image{
                                     text: if(model.modelData.patternName==="") "no pattern chosen"; else model.modelData.patternName
                                     font.underline: (model.modelData.patternName==="")?true:false
                                     color: (model.modelData.patternName==="")?"#777777":"black"
-                                    font.pointSize: if(mw.mac()) 11; else 8;
+                                    //font.pointSize: if(mw.mac()) 11; else 8;
+                                    font.pixelSize:11
                                     anchors.verticalCenter: parent.verticalCenter
                                     anchors.verticalCenterOffset: 2
                                     MouseArea {
@@ -2746,7 +2853,8 @@ Image{
                                     text: model.modelData.status
                                     color: (model.modelData.done && model.modelData.status!="checking..." && model.modelData.status!="NO VALUE")? "#c80b0b": "black"
                                     font.bold: (model.modelData.done && model.modelData.status!="checking..." && model.modelData.status!="NO VALUE")
-                                    font.pointSize: (!mw.mac())?8:12
+                                    //font.pointSize: (!mw.mac())?8:12
+                                    font.pixelSize:12
                                     MouseArea{
                                         anchors.fill: parent
                                         onClicked: {
@@ -3014,6 +3122,23 @@ Image{
             }
         }
     }
+/*
+    Menu {
+        id: virtualBlink1Menu
+        MenuItem {
+            text: "Set startup script to off"
+            onTriggered: {
+                mw.setStartupPattern("_OFF");
+            }
+        }
+        MenuItem {
+            text: "Set startup script to default"
+            onTriggered: {
+                mw.setStartupPattern("_DEFAULT");
+            }
+        }
+    }
+*/
 
     //color picker
     Item{
@@ -3137,7 +3262,8 @@ Image{
                     anchors.top: parent.top
                     anchors.topMargin: 10
                     text: name
-                    font.pointSize: (!mw.mac())?8:11
+                    //font.pointSize: (!mw.mac())?8:11
+                    font.pixelSize:11
                     color: "#555555"
                     verticalAlignment: Qt.AlignCenter
                 }
